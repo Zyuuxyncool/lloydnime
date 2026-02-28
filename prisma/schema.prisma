@@ -4,7 +4,7 @@
 // Gunakan "postgresql" jika Anda memakai Neon/Supabase
 // Gunakan "mysql" jika Anda memakai PlanetScale
 datasource db {
-  provider     = "mysql" // atau "postgresql"
+  provider     = "postgresql" // atau "postgresql"
   url          = env("DATABASE_URL")
   relationMode = "prisma"
 }
