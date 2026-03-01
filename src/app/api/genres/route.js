@@ -6,7 +6,7 @@ export async function GET() {
       return Response.json({ genres: [], error: 'API URL not configured' }, { status: 500 });
     }
 
-    const response = await fetch(`${apiUrl}/animasu/genres`, {
+    const response = await fetch(`${apiUrl}/genre`, {
       cache: 'no-store'
     });
 

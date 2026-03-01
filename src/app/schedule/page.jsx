@@ -20,7 +20,7 @@ const DAYS = [
 async function fetchSchedule() {
   try {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-    const response = await fetch(`${apiUrl}/animasu/schedule`);
+    const response = await fetch(`${apiUrl}/schedule`);
     if (!response.ok) {
       throw new Error('Gagal mengambil data schedule');
     }
@@ -55,10 +55,15 @@ export default function SchedulePage() {
   };
 
   const [schedule, setSchedule] = useState({});
-  const [activeDay, setActiveDay] = useState(getCurrentDay());
+  const [activeDay, setActiveDay] = useState('senin'); // Default to Monday to prevent hydration mismatch
   const [isLoading, setIsLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
+    // Set actual current day after mount
+    setActiveDay(getCurrentDay());
+    
     const loadSchedule = async () => {
       setIsLoading(true);
       const data = await fetchSchedule();

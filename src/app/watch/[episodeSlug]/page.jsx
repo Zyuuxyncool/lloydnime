@@ -95,6 +95,21 @@ function WatchPageContent({ params, episodeSlug }) {
     }
   };
 
+  const parseJsonResponse = async (response, context = 'response') => {
+    const contentType = response?.headers?.get('content-type') || '';
+    const rawText = await response.text();
+
+    if (!contentType.toLowerCase().includes('application/json')) {
+      throw new Error(`Format ${context} bukan JSON`);
+    }
+
+    try {
+      return JSON.parse(rawText);
+    } catch {
+      throw new Error(`Gagal parse JSON dari ${context}`);
+    }
+  };
+
   // useEffect untuk Fetch Data (HANYA FETCH 1)
   useEffect(() => {
     if (!episodeSlug) {
@@ -114,17 +129,56 @@ function WatchPageContent({ params, episodeSlug }) {
       setIsValidNext(false);
 
       try {
-        // --- HANYA FETCH 1: Ambil Data Episode (Streams) ---
-        const episodeResponse = await fetch(`${apiUrl}/animasu/episode/${episodeSlug}`);
-        
-        // Log the request untuk debugging
-        console.log(`Fetching episode from: ${apiUrl}/animasu/episode/${episodeSlug}`);
-        console.log(`Response status: ${episodeResponse.status}`);
-        
-        if (!episodeResponse.ok) {
-          throw new Error(`Gagal mengambil data episode. Status: ${episodeResponse.status}. URL yang diakses: ${apiUrl}/animasu/episode/${episodeSlug}`);
+        // --- Try multiple episode endpoints ---
+        const endpoints = [
+          `${apiUrl}/episode/${episodeSlug}`,
+          `${apiUrl}/animasu/episode/${episodeSlug}`
+        ];
+
+        let episodeData = null;
+        let fetchSuccess = false;
+
+        for (const endpoint of endpoints) {
+          try {
+            console.log(`Trying episode from: ${endpoint}`);
+            const episodeResponse = await fetch(endpoint);
+            
+            if (!episodeResponse.ok) {
+              if (episodeResponse.status >= 500) {
+                console.error(`Episode API error ${episodeResponse.status} at ${endpoint}`);
+              }
+              continue;
+            }
+
+            const contentType = episodeResponse.headers.get('content-type') || '';
+            if (!contentType.toLowerCase().includes('application/json')) {
+              console.error(`Non-JSON response from ${endpoint}`);
+              continue;
+            }
+
+            episodeData = await parseJsonResponse(episodeResponse, 'episode API');
+            fetchSuccess = true;
+            console.log("Episode data loaded from:", endpoint);
+            break;
+          } catch (err) {
+            console.error(`Failed to fetch from ${endpoint}:`, err.message);
+            continue;
+          }
         }
-        const episodeData = await episodeResponse.json();
+
+        if (!episodeData || !fetchSuccess) {
+          // Set minimal info even if streaming fails
+          setEpisodeTitle(episodeSlug.replace(/-/g, ' ').replace(/episode/gi, 'Episode'));
+          setError(
+            `Episode ini belum tersedia untuk ditonton. Kemungkinan:\n` +
+            `• Episode masih dalam proses upload\n` +
+            `• Link streaming sedang maintenance\n` +
+            `• Episode belum dirilis\n\n` +
+            `Silakan coba lagi nanti atau pilih episode lain.`
+          );
+          setIsLoading(false);
+          return;
+        }
         
         console.log("Episode Data:", episodeData);
 
@@ -274,13 +328,13 @@ function WatchPageContent({ params, episodeSlug }) {
         
         if (animeSlugToFetch) {
           try {
-            const animeUrl = `${apiUrl}/animasu/detail/${animeSlugToFetch}`;
+            const animeUrl = `${apiUrl}/anime/${animeSlugToFetch}`;
             console.log("Fetching from URL:", animeUrl);
             const animeResponse = await fetch(animeUrl);
             console.log("Anime response status:", animeResponse.status);
             
             if (animeResponse.ok) {
-              const animeData = await animeResponse.json();
+              const animeData = await parseJsonResponse(animeResponse, 'anime detail API');
               console.log("Anime response data received");
               
               const animeDetail = animeData.data || animeData.detail || animeData;
@@ -427,7 +481,12 @@ function WatchPageContent({ params, episodeSlug }) {
     // Jika URL adalah API endpoint (mengandung /server/), fetch streaming URL terlebih dahulu
     if (serverUrl && serverUrl.includes('/server/')) {
       fetch(serverUrl)
-        .then(res => res.json())
+        .then(async (res) => {
+          if (!res.ok) {
+            throw new Error(`Server API status ${res.status}`);
+          }
+          return parseJsonResponse(res, 'server API');
+        })
         .then(data => {
           console.log("Server data:", data);
           // Extract actual streaming URL dari response
@@ -467,7 +526,7 @@ function WatchPageContent({ params, episodeSlug }) {
     const checkEpisodeExistence = async () => {
       if (prevSlug) {
         try {
-          const response = await fetch(`${apiUrl}/animasu/episode/${prevSlug}`, { method: 'HEAD' });
+          const response = await fetch(`${apiUrl}/episode/${prevSlug}`, { method: 'HEAD' });
           setIsValidPrev(response.ok);
         } catch (error) {
           console.error("Error checking prevSlug:", error);
@@ -478,7 +537,7 @@ function WatchPageContent({ params, episodeSlug }) {
       }
       if (nextSlug) {
         try {
-          const response = await fetch(`${apiUrl}/animasu/episode/${nextSlug}`, { method: 'HEAD' });
+          const response = await fetch(`${apiUrl}/episode/${nextSlug}`, { method: 'HEAD' });
           setIsValidNext(response.ok);
         } catch (error) {
           console.error("Error checking nextSlug:", error);

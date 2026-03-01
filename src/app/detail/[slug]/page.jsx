@@ -5,6 +5,40 @@ import Navigation from '@/app/components/Navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 
+// Fallback fetch menggunakan Jikan API
+async function getDetailAnimeFallback(slug) {
+  try {
+    const searchTerm = slug.replace(/-sub-indo|-batch/gi, '').replace(/-/g, ' ');
+    const response = await fetch(
+      `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(searchTerm)}&limit=1`,
+      { next: { revalidate: 3600 } }
+    );
+
+    if (!response.ok) return null;
+
+    const result = await response.json();
+    const item = result?.data?.[0];
+    if (!item) return null;
+
+    return {
+      title: item.title || item.title_english,
+      poster: item.images?.webp?.large_image_url || item.images?.jpg?.large_image_url,
+      synopsis: item.synopsis,
+      type: item.type,
+      status: item.status,
+      genres: item.genres?.map(g => ({ title: g.name })) || [],
+      score: item.score,
+      episodes: item.episodes,
+      studios: item.studios?.map(s => ({ title: s.name })) || [],
+      aired: item.aired?.string,
+      episodeList: [],
+      batchList: [],
+    };
+  } catch {
+    return null;
+  }
+}
+
 // Fungsi Fetch Detail Anime
 async function getDetailAnime(slug) {
   try {
@@ -20,30 +54,80 @@ async function getDetailAnime(slug) {
       return null;
     }
 
+    // Check if this is a Jikan result (prefixed with 'jikan-')
+    if (safeSlug.startsWith('jikan-')) {
+      const malId = safeSlug.replace('jikan-', '');
+      // Fetch directly from Jikan API using MAL ID
+      try {
+        const response = await fetch(
+          `https://api.jikan.moe/v4/anime/${malId}`,
+          { next: { revalidate: 3600 } }
+        );
+
+        if (response.ok) {
+          const result = await response.json();
+          const item = result?.data;
+          
+          if (item) {
+            return {
+              title: item.title || item.title_english,
+              poster: item.images?.webp?.large_image_url || item.images?.jpg?.large_image_url,
+              synopsis: item.synopsis,
+              type: item.type,
+              status: item.status,
+              genres: item.genres?.map(g => ({ title: g.name })) || [],
+              score: item.score,
+              episodes: item.episodes,
+              studios: item.studios?.map(s => ({ title: s.name })) || [],
+              aired: item.aired?.string,
+              episodeList: [],
+              batchList: [],
+            };
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch from Jikan with MAL ID:', malId, err);
+      }
+      return null;
+    }
+
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     const endpoints = [
+      `${apiUrl}/anime/${safeSlug}`,
+      `${apiUrl}/anime/${safeSlug.toLowerCase()}`,
       `${apiUrl}/animasu/detail/${safeSlug}`,
       `${apiUrl}/animasu/detail/${safeSlug.toLowerCase()}`,
     ];
 
     for (const endpoint of endpoints) {
-      const response = await fetch(endpoint, { next: { revalidate: 3600 } });
-      if (!response.ok) {
+      try {
+        const response = await fetch(endpoint, { next: { revalidate: 3600 } });
+        
+        if (!response.ok) {
+          continue;
+        }
+
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.toLowerCase().includes('application/json')) {
+          continue;
+        }
+
+        const result = await response.json();
+        const animeData = result?.data?.detail || result?.data || result?.detail || result;
+
+        if (animeData && animeData.title) {
+          return animeData;
+        }
+      } catch {
         continue;
-      }
-
-      const result = await response.json();
-      const animeData = result?.data?.detail || result?.data || result?.detail || result;
-
-      if (animeData) {
-        return animeData;
       }
     }
 
-    throw new Error('Gagal mengambil data anime utama (API baru)');
+    // Semua endpoint gagal, coba fallback
+    return await getDetailAnimeFallback(safeSlug);
   } catch (error) {
     console.error("Gagal mengambil detail anime:", error);
-    return null;
+    return await getDetailAnimeFallback(slug);
   }
 }
 

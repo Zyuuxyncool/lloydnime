@@ -3,34 +3,114 @@ import SearchInput from '@/app/components/SearchInput';
 import Navigation from '@/app/components/Navigation';
 import BreadcrumbNavigation from '@/app/components/BreadcrumbNavigation';
 
+async function searchFallback(keyword) {
+  try {
+    const response = await fetch(
+      `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(keyword)}&limit=20`,
+      { next: { revalidate: 1800 } }
+    );
+
+    if (!response.ok) return [];
+
+    const result = await response.json();
+    const list = Array.isArray(result?.data) ? result.data : [];
+
+    const processed = list.map((item) => {
+      // Use MAL ID as slug for Jikan results
+      const malId = item?.mal_id;
+      const title = item?.title || item?.title_english || 'Unknown';
+
+      console.log('[Jikan Fallback] Title:', title, '→ MAL ID:', malId);
+
+      return {
+        title,
+        slug: malId ? `jikan-${malId}` : null, // Prefix with 'jikan-' to identify Jikan sources
+        poster: item?.images?.webp?.large_image_url || item?.images?.jpg?.image_url,
+        episode: item?.episodes || '?',
+        type: item?.type || 'TV',
+      };
+    }).filter((anime) => Boolean(anime.title && anime.poster && anime.slug));
+
+    return processed;
+  } catch {
+    return [];
+  }
+}
+
 async function searchAnime(slug) {
   if (!slug) return [];
 
   try {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-    const keyword = encodeURIComponent(decodeURIComponent(slug));
-    const searchUrl = `${apiUrl}/animasu/search/${keyword}?page=1`;
+    const keyword = decodeURIComponent(slug);
+    const encodedKeyword = encodeURIComponent(keyword);
+    
+    const endpoints = [
+      `${apiUrl}/search/${encodedKeyword}`,
+      `${apiUrl}/animasu/search/${encodedKeyword}`
+    ];
 
-    const response = await fetch(searchUrl);
+    let animes = [];
 
-    if (!response.ok) {
-      console.error(`API error for slug "${slug}": Status ${response.status}`);
-      return [];
+    for (const searchUrl of endpoints) {
+      try {
+        const response = await fetch(searchUrl, {
+          next: { revalidate: 600 }
+        });
+
+        if (!response.ok) {
+          if (response.status >= 500) {
+            console.error(`API error for "${keyword}": Status ${response.status}`);
+          }
+          continue;
+        }
+
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.toLowerCase().includes('application/json')) {
+          continue;
+        }
+
+        const result = await response.json();
+        const data = result?.data || result;
+        const rawAnimes = data?.animeList || data?.animes || result?.animes || result?.animeList || [];
+
+        animes = rawAnimes.map((anime) => {
+          // Extract and clean slug properly
+          let cleanSlug = anime?.slug || anime?.animeId || anime?.anime_id || anime?.id || null;
+          
+          if (cleanSlug && typeof cleanSlug === 'string') {
+            // Remove leading/trailing slashes and get last segment if it's a path
+            cleanSlug = cleanSlug.trim().replace(/^\/+|\/+$/g, '');
+            if (cleanSlug.includes('/')) {
+              const parts = cleanSlug.split('/').filter(Boolean);
+              cleanSlug = parts[parts.length - 1] || null;
+            }
+            // Ensure it's not empty after cleaning
+            cleanSlug = cleanSlug || null;
+          }
+          
+          return {
+            ...anime,
+            slug: cleanSlug,
+            poster: anime?.poster || anime?.image || anime?.thumbnail,
+            episode: anime?.episode || anime?.episodes || anime?.latestEpisode,
+          };
+        });
+
+        if (animes.length > 0) break;
+      } catch (err) {
+        continue;
+      }
     }
 
-    const result = await response.json();
-    const data = result?.data || result;
-    const animes = data?.animeList || data?.animes || result?.animes || result?.animeList || [];
+    if (animes.length === 0) {
+      animes = await searchFallback(keyword);
+    }
 
-    return animes.map((anime) => ({
-      ...anime,
-      slug: anime?.slug || anime?.animeId || anime?.anime_id || anime?.id,
-      poster: anime?.poster || anime?.image || anime?.thumbnail,
-      episode: anime?.episode || anime?.episodes || anime?.latestEpisode,
-    }));
+    return animes;
   } catch (error) {
-    console.error("Gagal total saat mengambil hasil pencarian:", error);
-    return [];
+    console.error("Error saat pencarian:", error);
+    return await searchFallback(decodeURIComponent(slug));
   }
 }
 
@@ -46,7 +126,7 @@ export default async function SearchPage({ params: ParamsPromise }) {
   ];
 
   return (
-    <div className="min-h-screen bg-neutral-900 text-white">
+    <div className="min-h-screen bg-neutral-900 text-white pt-20">
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
           <Navigation />
@@ -58,20 +138,16 @@ export default async function SearchPage({ params: ParamsPromise }) {
         </div>
         {searchResults && searchResults.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {searchResults.map((anime, index) => {
-              const slugParts = anime.slug?.split('/').filter(Boolean);
-              const processedSlug = slugParts?.pop() || '';
-              return (
-                <AnimeCard
-                  key={`${processedSlug || anime.title || 'search'}-${index}`}
-                  slug={processedSlug}
-                  type={anime.type}
-                  title={anime.title}
-                  image={anime.poster}
-                  episode={anime.episode}
-                />
-              );
-            })}
+            {searchResults.map((anime, index) => (
+              <AnimeCard
+                key={`${anime.slug || anime.title || 'search'}-${index}`}
+                slug={anime.slug}
+                type={anime.type}
+                title={anime.title}
+                image={anime.poster}
+                episode={anime.episode}
+              />
+            ))}
           </div>
         ) : (
           <div className="text-center py-16">

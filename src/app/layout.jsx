@@ -1,6 +1,7 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import NextAuthProvider from "./components/NextAuthProvider";
+import MaintenancePage from "./components/MaintenancePage";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,6 +30,21 @@ export const metadata = {
 };
 
 export default function RootLayout({ children }) {
+  const isMaintenanceMode = process.env.MAINTENANCE_MODE === 'true';
+
+  if (isMaintenanceMode) {
+    return (
+      <html lang="en" suppressHydrationWarning>
+        <body
+          suppressHydrationWarning
+          className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        >
+          <MaintenancePage />
+        </body>
+      </html>
+    );
+  }
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body

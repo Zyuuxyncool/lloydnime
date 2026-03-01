@@ -9,7 +9,7 @@ const ANIME_PER_PAGE = 15;
 async function getPopularAnime(page = 1) {
   try {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-    const response = await fetch(`${apiUrl}/animasu/popular?page=${page}`, {
+    const response = await fetch(`${apiUrl}/home`, {
       next: { revalidate: 3600 },
       headers: { Accept: 'application/json' },
     });

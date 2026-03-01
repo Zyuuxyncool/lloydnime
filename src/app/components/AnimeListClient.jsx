@@ -68,7 +68,7 @@ function LetterFilter({ selectedLetter, onLetterChange }) {
 async function fetchAnimePage(page, letter) {
     try {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-        const response = await fetch(`${apiUrl}/animasu/animelist?letter=${letter}&page=${page}`);
+        const response = await fetch(`${apiUrl}/unlimited?letter=${letter}&page=${page}`);
 
         if (!response.ok) {
             throw new Error(`Gagal mengambil data: ${response.status}`);

@@ -33,17 +33,31 @@ const Navbar = ({ user }) => {
     navLinks.push({ href: "/api/auth/signin", name: "Login" });
   }
 
+  // Prevent hydration mismatch by not rendering until mounted
+  if (!isMounted) {
+    return (
+      <nav className="fixed top-0 left-0 right-0 z-50 transition-all duration-300 bg-transparent">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex justify-between items-center">
+            <Link href="/" className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-purple-400 bg-clip-text text-transparent">
+              LloydNime
+            </Link>
+          </div>
+        </div>
+      </nav>
+    );
+  }
+
   return (
     <>
       <nav 
         className={`
           fixed top-0 left-0 right-0 z-50 transition-all duration-300
-          ${isMounted && scrolled 
+          ${scrolled 
             ? 'bg-neutral-900/95 backdrop-blur-lg shadow-lg shadow-pink-500/10' 
             : 'bg-transparent'
           }
         `}
-        suppressHydrationWarning
       >
         <div className="container mx-auto px-4 py-4">
           <div className="flex justify-between items-center">

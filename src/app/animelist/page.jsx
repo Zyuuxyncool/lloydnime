@@ -9,7 +9,7 @@ import BreadcrumbNavigation from '../components/BreadcrumbNavigation';
 async function getInitialAnime(letter, page) {
     try {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-        const response = await fetch(`${apiUrl}/animasu/animelist?letter=${letter}&page=${page}`, { 
+        const response = await fetch(`${apiUrl}/unlimited?letter=${letter}&page=${page}`, { 
             cache: 'no-store' // Data anime list sebaiknya jangan di-cache terlalu lama
         }); 
         

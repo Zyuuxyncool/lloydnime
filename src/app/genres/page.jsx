@@ -8,7 +8,7 @@ import Image from 'next/image';
 async function getGenres() {
   try {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-    const genreUrl = `${apiUrl}/animasu/genres`;
+    const genreUrl = `${apiUrl}/genre`;
     
     console.log('Fetching genres from:', genreUrl);
     
@@ -46,7 +46,7 @@ async function getGenres() {
 async function getSampleAnimeForGenre(slug) {
   try {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-    const response = await fetch(`${apiUrl}/animasu/genre/${slug}?page=1`, {
+    const response = await fetch(`${apiUrl}/genre/${slug}?page=1`, {
       next: { revalidate: 86400 }
     });
     

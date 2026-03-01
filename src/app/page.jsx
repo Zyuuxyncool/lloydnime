@@ -22,6 +22,7 @@ function AnimeListSkeleton() {
 // Fungsi ini akan fetch dan filter data secara berulang
 // sampai jumlah 'desiredLimit' tercapai atau data habis.
 async function fetchAndFilterAnime(baseUrl, endpoint, desiredLimit = 10) {
+  const endpointCandidates = Array.isArray(endpoint) ? endpoint : [endpoint];
   let filteredAnimes = []; // Array untuk menampung hasil
   let currentPage = 1;
   let hasNextPage = true;
@@ -37,15 +38,34 @@ async function fetchAndFilterAnime(baseUrl, endpoint, desiredLimit = 10) {
     currentPage <= maxPagesToFetch
   ) {
     try {
-      const response = await fetch(`${baseUrl}/${endpoint}?page=${currentPage}`);
-      
-      if (!response.ok) {
-        console.error(`Gagal fetch ${endpoint} page ${currentPage}: Status ${response.status}`);
-        hasNextPage = false; // Hentikan loop jika halaman gagal di-fetch
-        continue; // Lanjut ke iterasi loop berikutnya (yang akan gagal)
+      let data = null;
+      let activeEndpoint = null;
+
+      for (const candidate of endpointCandidates) {
+        const response = await fetch(`${baseUrl}/${candidate}?page=${currentPage}`);
+
+        if (!response.ok) {
+          if (response.status >= 500) {
+            console.error(`Gagal fetch ${candidate} page ${currentPage}: Status ${response.status}`);
+          }
+          continue;
+        }
+
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.toLowerCase().includes('application/json')) {
+          console.error(`Respons ${candidate} bukan JSON (page ${currentPage})`);
+          continue;
+        }
+
+        data = await response.json();
+        activeEndpoint = candidate;
+        break;
       }
 
-      const data = await response.json();
+      if (!data) {
+        hasNextPage = false;
+        continue;
+      }
       const rawList = data?.data?.animeList || data?.data?.animes || data?.animeList || data?.animes || [];
 
       const animesOnThisPage = rawList.map((anime) => {
@@ -82,13 +102,41 @@ async function fetchAndFilterAnime(baseUrl, endpoint, desiredLimit = 10) {
       currentPage++;
 
     } catch (error) {
-      console.error(`Error saat processing ${endpoint} page ${currentPage}:`, error);
+      console.error(`Error saat processing ${endpointCandidates.join(', ')} page ${currentPage}:`, error);
       hasNextPage = false; // Hentikan loop jika ada error parsing JSON, dll.
     }
   }
 
   // Kembalikan array yang sudah terisi dan terpotong
   return filteredAnimes;
+}
+
+async function fetchFallbackAnime(section = 'ongoing', desiredLimit = 10) {
+  try {
+    const fallbackUrl = section === 'ongoing'
+      ? 'https://api.jikan.moe/v4/seasons/now?limit=25'
+      : 'https://api.jikan.moe/v4/top/anime?limit=25';
+
+    const response = await fetch(fallbackUrl, {
+      next: { revalidate: 1800 }
+    });
+
+    if (!response.ok) return [];
+
+    const result = await response.json();
+    const list = Array.isArray(result?.data) ? result.data : [];
+
+    return list.slice(0, desiredLimit).map((item) => ({
+      title: item?.title || item?.title_english || 'Unknown Title',
+      slug: null,
+      poster: item?.images?.webp?.large_image_url || item?.images?.jpg?.large_image_url || item?.images?.jpg?.image_url,
+      episodes: item?.episodes || '?',
+      releaseDay: section === 'ongoing' ? 'Ongoing' : 'Popular',
+      type: item?.type || 'TV',
+    })).filter((anime) => Boolean(anime.title && anime.poster));
+  } catch {
+    return [];
+  }
 }
 // --- AKHIR FUNGSI HELPER BARU ---
 
@@ -108,8 +156,8 @@ const Home = async () => {
   // dan masing-masing akan melakukan looping fetch internal jika diperlukan.
   try {
     const [ongoingResult, completedResult] = await Promise.allSettled([
-      fetchAndFilterAnime(apiUrl, 'animasu/ongoing', 10),
-      fetchAndFilterAnime(apiUrl, 'animasu/completed', 10)
+      fetchAndFilterAnime(apiUrl, ['ongoing-anime', 'animasu/ongoing'], 10),
+      fetchAndFilterAnime(apiUrl, ['complete-anime', 'completed-anime', 'animasu/completed'], 10)
     ]);
 
     if (ongoingResult.status === 'fulfilled') {
@@ -134,6 +182,16 @@ const Home = async () => {
     console.error("Error global saat fetch di Home:", error);
     ongoingFetchFailed = true;
     completedFetchFailed = true;
+  }
+
+  if (animeOngoing.length === 0) {
+    animeOngoing = await fetchFallbackAnime('ongoing', 10);
+    ongoingFetchFailed = animeOngoing.length === 0;
+  }
+
+  if (animeComplete.length === 0) {
+    animeComplete = await fetchFallbackAnime('complete', 10);
+    completedFetchFailed = animeComplete.length === 0;
   }
   // -----------------------------------------------------------------
 

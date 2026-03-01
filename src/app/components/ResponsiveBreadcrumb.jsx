@@ -9,8 +9,10 @@ import BreadcrumbNavigation from './BreadcrumbNavigation';
  */
 export default function ResponsiveBreadcrumb({ crumbs = [] }) {
   const [isMobile, setIsMobile] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 768);
     };
@@ -28,7 +30,8 @@ export default function ResponsiveBreadcrumb({ crumbs = [] }) {
   };
 
   // Responsive max length: mobile = 10, PC = 25
-  const maxLength = isMobile ? 10 : 25;
+  // Use consistent value until mounted to prevent hydration mismatch
+  const maxLength = mounted ? (isMobile ? 10 : 25) : 25;
 
   // Truncate all breadcrumb titles
   const truncatedCrumbs = crumbs.map(crumb => ({

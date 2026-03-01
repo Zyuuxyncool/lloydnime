@@ -10,7 +10,7 @@ async function getAnimeByGenre(slug, page = 1) {
   try {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     const urls = [
-      `${apiUrl}/animasu/genre/${slug}?page=${page}`,
+      `${apiUrl}/genre/${slug}?page=${page}`,
     ];
 
     let result = null;
@@ -77,7 +77,7 @@ async function getAnimeByGenre(slug, page = 1) {
 async function getGenres() {
   try {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-    const response = await fetch(`${apiUrl}/animasu/genres`, {
+    const response = await fetch(`${apiUrl}/genre`, {
       cache: 'no-store'
     });
     
