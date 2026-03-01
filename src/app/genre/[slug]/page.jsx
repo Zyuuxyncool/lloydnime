@@ -37,23 +37,58 @@ async function getAnimeByGenre(slug, page = 1) {
     
     const rawAnimes = result?.data?.animeList || result?.data?.animes || result?.animeList || result?.animes || [];
     const animes = rawAnimes.map((anime) => {
-      const fallbackFromLink =
-        (typeof anime?.link === 'string' && anime.link.split('/').filter(Boolean).pop()) ||
-        (typeof anime?.href === 'string' && anime.href.split('/').filter(Boolean).pop());
-
-      const normalizedSlug = (anime?.slug || anime?.animeSlug || anime?.anime_id || anime?.animeId || fallbackFromLink || '')
-        .toString()
-        .split('?')[0]
-        .trim();
-
       return {
         ...anime,
-        slug: normalizedSlug,
+        slug: anime?.animeId || anime?.slug || anime?.anime_id,
         poster: anime?.poster || anime?.image || anime?.thumbnail,
-        episode: anime?.episode || anime?.latestEpisode || anime?.latest_episode,
-        status_or_day: anime?.status_or_day || anime?.status || anime?.release_day,
+        episode: anime?.episode || anime?.episodes || anime?.latestEpisode,
+        status_or_day: anime?.status_or_day || anime?.status || anime?.releaseDay || anime?.release_day,
       };
     }).filter((anime) => Boolean(anime.slug));
+
+    if (animes.length === 0) {
+      // Fallback: use search endpoint and filter by genreId
+      try {
+        const searchResponse = await fetch(`${apiUrl}/search/${encodeURIComponent(slug)}`, {
+          cache: 'no-store'
+        });
+
+        if (searchResponse.ok) {
+          const searchResult = await searchResponse.json();
+          const searchList =
+            searchResult?.data?.animeList ||
+            searchResult?.data?.animes ||
+            searchResult?.animeList ||
+            searchResult?.animes ||
+            [];
+
+          const filtered = searchList
+            .filter((anime) => Array.isArray(anime?.genreList) && anime.genreList.some((g) => g?.genreId === slug))
+            .map((anime) => ({
+              ...anime,
+              slug: anime?.animeId || anime?.slug || anime?.anime_id,
+              poster: anime?.poster || anime?.image || anime?.thumbnail,
+              episode: anime?.episode || anime?.episodes || anime?.latestEpisode,
+              status_or_day: anime?.status_or_day || anime?.status || anime?.releaseDay || anime?.release_day,
+            }))
+            .filter((anime) => Boolean(anime.slug));
+
+          if (filtered.length > 0) {
+            return {
+              animes: filtered,
+              pagination: {
+                hasNext: false,
+                hasPrev: false,
+                currentPage: 1,
+                totalPages: 1
+              }
+            };
+          }
+        }
+      } catch (fallbackError) {
+        console.error('Error fetching genre fallback:', fallbackError);
+      }
+    }
 
     const pagination = result?.pagination || result?.data?.pagination || { hasNextPage: false, hasPrevPage: false };
     

@@ -12,7 +12,7 @@ async function getMovieAnime(page = 1) {
   try {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     const response = await fetch(
-      `${apiUrl}/ongoing-anime?page=${page}`,
+      `${apiUrl}/complete-anime?page=${page}`,
       { next: { revalidate: 3600 } } // Cache data selama 1 jam
     );
 

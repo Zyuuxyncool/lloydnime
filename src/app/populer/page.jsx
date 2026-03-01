@@ -25,21 +25,12 @@ async function getPopularAnime(page = 1) {
 
     const normalizedAnimes = rawAnimes
       .map((anime) => {
-        const fallbackFromLink =
-          (typeof anime?.link === 'string' && anime.link.split('/').filter(Boolean).pop()) ||
-          (typeof anime?.href === 'string' && anime.href.split('/').filter(Boolean).pop());
-
-        const normalizedSlug = (anime?.slug || anime?.animeId || anime?.anime_id || fallbackFromLink || '')
-          .toString()
-          .split('?')[0]
-          .trim();
-
         return {
           ...anime,
-          slug: normalizedSlug,
+          slug: anime?.animeId || anime?.slug || anime?.anime_id,
           poster: anime?.poster || anime?.image || anime?.thumbnail,
           episode: anime?.episode || anime?.episodes || anime?.latestEpisode || anime?.latest_episode,
-          status_or_day: anime?.status_or_day || anime?.status || anime?.release_day,
+          status_or_day: anime?.status_or_day || anime?.status || anime?.releaseDay || anime?.release_day,
         };
       })
       .filter((anime) => Boolean(anime.slug));

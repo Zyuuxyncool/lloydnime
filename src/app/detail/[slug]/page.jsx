@@ -93,10 +93,8 @@ async function getDetailAnime(slug) {
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     const endpoints = [
-      `${apiUrl}/anime/${safeSlug}`,
-      `${apiUrl}/anime/${safeSlug.toLowerCase()}`,
-      `${apiUrl}/animasu/detail/${safeSlug}`,
-      `${apiUrl}/animasu/detail/${safeSlug.toLowerCase()}`,
+      `${apiUrl}/anime?slug=${encodeURIComponent(safeSlug)}`,
+      `${apiUrl}/anime?slug=${encodeURIComponent(safeSlug.toLowerCase())}`
     ];
 
     for (const endpoint of endpoints) {
@@ -113,9 +111,17 @@ async function getDetailAnime(slug) {
         }
 
         const result = await response.json();
-        const animeData = result?.data?.detail || result?.data || result?.detail || result;
+        const animeData =
+          result?.data?.detail ||
+          result?.data?.list?.[0] ||
+          result?.data ||
+          result?.detail ||
+          result;
 
-        if (animeData && animeData.title) {
+        if (
+          animeData &&
+          (animeData.title || animeData.episodeList || animeData.info?.episodeList)
+        ) {
           return animeData;
         }
       } catch {
@@ -195,7 +201,13 @@ export default async function DetailAnimePage({ params: paramsPromise }) {
   const japaneseTitle = toDisplayText(pickFirst(anime.japanese, anime.japaneseTitle, anime.titleJapanese));
   const status = toDisplayText(pickFirst(anime.status, anime.state));
   const score = toDisplayText(pickFirst(anime.score, anime.rating, anime.scoreValue));
-  const totalEpisodes = toDisplayText(pickFirst(anime.totalEpisodes, anime.episodesCount, anime.episodeTotal, Array.isArray(anime.episodes) ? anime.episodes.length : null));
+  const totalEpisodesValue = pickFirst(
+    anime.totalEpisodes,
+    anime.episodesCount,
+    anime.episodeTotal,
+    Array.isArray(anime.episodes) ? anime.episodes.length : null
+  );
+  const totalEpisodes = toDisplayText(totalEpisodesValue);
   const source = toDisplayText(pickFirst(anime.source, anime.sourceType));
 
   const rawGenres = pickFirst(anime.genreList, anime.genres, anime.genre, []);
@@ -205,7 +217,15 @@ export default async function DetailAnimePage({ params: paramsPromise }) {
     name: genre?.name || genre?.title || genre?.genre || genre,
   }));
 
-  const rawEpisodesSource = pickFirst(anime.episodeList, anime.episodes, anime.episode_list, anime.episode, anime.latestEpisodes, []);
+  const rawEpisodesSource = pickFirst(
+    anime.episodeList,
+    anime.info?.episodeList,
+    anime.episodes,
+    anime.episode_list,
+    anime.episode,
+    anime.latestEpisodes,
+    []
+  );
   const rawEpisodes = Array.isArray(rawEpisodesSource)
     ? rawEpisodesSource
     : (rawEpisodesSource?.episodeList || rawEpisodesSource?.list || rawEpisodesSource?.episodes || []);
@@ -305,12 +325,22 @@ export default async function DetailAnimePage({ params: paramsPromise }) {
             <div className="flex space-x-4 mb-6">
 
               {/* --- MODIFIKASI: Tambahkan queryString ke tombol "Watch Now" --- */}
-              <Link
-                href={firstEpisodeSlug ? `/watch/${firstEpisodeSlug}?${queryString}` : '#'}
-                className="bg-pink-600 text-white px-6 py-2 rounded-full flex items-center space-x-2 hover:bg-pink-700 transition"
-              >
-                Watch Now
-              </Link>
+              {firstEpisodeSlug ? (
+                <Link
+                  href={`/watch/${firstEpisodeSlug}?${queryString}`}
+                  className="bg-pink-600 text-white px-6 py-2 rounded-full flex items-center space-x-2 hover:bg-pink-700 transition"
+                >
+                  Watch Now
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="bg-neutral-700 text-neutral-300 px-6 py-2 rounded-full flex items-center space-x-2 cursor-not-allowed"
+                >
+                  Episode belum tersedia
+                </button>
+              )}
 
               {anime.batch && anime.batch.slug && (
                 <Link
@@ -414,22 +444,23 @@ export default async function DetailAnimePage({ params: paramsPromise }) {
                 </Link>
               ))}
             </div>
-          ) : anime.episodes && typeof anime.episodes === 'number' ? (
+          ) : (
             <div className="bg-neutral-800 rounded-lg p-6 flex items-center justify-between">
               <div>
-                <p className="text-lg font-semibold text-white">Total Episodes</p>
-                <p className="text-neutral-400">{anime.episodes} episodes available</p>
+                <p className="text-lg font-semibold text-white">Episode belum tersedia</p>
+                {typeof totalEpisodesValue === 'number' && totalEpisodesValue > 0 ? (
+                  <p className="text-neutral-400">Total Episodes: {totalEpisodesValue}</p>
+                ) : (
+                  <p className="text-neutral-400">Belum ada daftar episode untuk anime ini.</p>
+                )}
               </div>
-              <Link
-                href={`/watch/${slug}?${queryString}`}
-                className="bg-pink-600 text-white px-6 py-3 rounded-full hover:bg-pink-700 transition"
+              <button
+                type="button"
+                disabled
+                className="bg-neutral-700 text-neutral-300 px-6 py-3 rounded-full cursor-not-allowed"
               >
-                Watch Now
-              </Link>
-            </div>
-          ) : (
-            <div className="col-span-full text-center text-neutral-400 py-8">
-              <p>{'No episodes available for this anime yet.'}</p>
+                Episode belum tersedia
+              </button>
             </div>
           )}
         </div>

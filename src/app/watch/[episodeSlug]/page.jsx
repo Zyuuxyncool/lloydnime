@@ -39,7 +39,7 @@ function WatchPageSkeleton() {
 }
 
 // Komponen ErrorDisplay (Tidak Berubah)
-function ErrorDisplay({ message, animeSlug }) {
+function ErrorDisplay({ message }) {
   return (
     <div className="min-h-screen bg-neutral-900 text-white flex flex-col justify-center items-center text-center px-4" suppressHydrationWarning>
       <h1 className="text-2xl font-bold mb-4 text-red-500">Terjadi Kesalahan</h1>
@@ -55,6 +55,7 @@ function ErrorDisplay({ message, animeSlug }) {
 function WatchPageContent({ params, episodeSlug }) {
   const { data: session, status: sessionStatus } = useSession();
   const searchParams = useSearchParams();
+  const isDebug = searchParams?.get('debug') === '1';
 
   // State (Tidak berubah)
   const [episodeTitle, setEpisodeTitle] = useState(null);
@@ -69,6 +70,9 @@ function WatchPageContent({ params, episodeSlug }) {
   const [animeInfo, setAnimeInfo] = useState(null);
   const [episodeList, setEpisodeList] = useState([]);
   const [showEpisodeList, setShowEpisodeList] = useState(false);
+  const [lastServerResponse, setLastServerResponse] = useState(null);
+  const [lastResolvedUrl, setLastResolvedUrl] = useState(null);
+  const [fallbackNotice, setFallbackNotice] = useState(null);
 
   // State untuk tracking waktu menonton
   const [watchStartTime, setWatchStartTime] = useState(null);
@@ -95,6 +99,19 @@ function WatchPageContent({ params, episodeSlug }) {
     }
   };
 
+  const withCacheBuster = (url, key) => {
+    if (!url) return url;
+    try {
+      const parsed = new URL(url);
+      parsed.searchParams.set('serverId', String(key || 'default'));
+      parsed.searchParams.set('t', Date.now().toString());
+      return parsed.toString();
+    } catch {
+      const separator = url.includes('?') ? '&' : '?';
+      return `${url}${separator}serverId=${encodeURIComponent(String(key || 'default'))}&t=${Date.now()}`;
+    }
+  };
+
   const parseJsonResponse = async (response, context = 'response') => {
     const contentType = response?.headers?.get('content-type') || '';
     const rawText = await response.text();
@@ -118,6 +135,12 @@ function WatchPageContent({ params, episodeSlug }) {
       return;
     }
 
+    if (!episodeSlug.includes('episode')) {
+      setError("Slug episode tidak valid. Buka episode dari daftar episode di halaman detail.");
+      setIsLoading(false);
+      return;
+    }
+
     async function fetchEpisodeData() {
       setIsLoading(true);
       setError(null);
@@ -129,10 +152,9 @@ function WatchPageContent({ params, episodeSlug }) {
       setIsValidNext(false);
 
       try {
-        // --- Try multiple episode endpoints ---
+        // --- Try episode endpoint ---
         const endpoints = [
-          `${apiUrl}/episode/${episodeSlug}`,
-          `${apiUrl}/animasu/episode/${episodeSlug}`
+          `${apiUrl}/episode/${episodeSlug}`
         ];
 
         let episodeData = null;
@@ -182,55 +204,128 @@ function WatchPageContent({ params, episodeSlug }) {
         
         console.log("Episode Data:", episodeData);
 
-        // Sesuaikan dengan struktur response Sanka
-        const episodeContent = episodeData.data || episodeData;
-        
-        // Extract servers - Sanka API returns 'server' (singular) field with list of servers
-        let serversList = [];
-        
-        // Check multiple possible field names for servers
-        if (Array.isArray(episodeContent.server)) {
-          // 'server' field with array of servers
-          serversList = episodeContent.server;
-        } else if (episodeContent.server && typeof episodeContent.server === 'object') {
-          // 'server' is a single object, wrap it in array
-          serversList = [episodeContent.server];
-        } else if (Array.isArray(episodeContent.streams)) {
-          serversList = episodeContent.streams;
-        } else if (Array.isArray(episodeContent.servers)) {
-          serversList = episodeContent.servers;
-        } else if (episodeContent.defaultStreamingUrl) {
-          // Fallback: use defaultStreamingUrl as single server
-          serversList = [{
-            name: 'Default Server',
-            url: episodeContent.defaultStreamingUrl
-          }];
+        // Sesuaikan dengan struktur response
+        let episodeContent = episodeData.data || episodeData;
+
+        const isEmptyEpisodePayload =
+          (!episodeContent?.title || episodeContent?.title === '') &&
+          (!episodeContent?.defaultStreamingUrl || episodeContent?.defaultStreamingUrl === '') &&
+          (!episodeContent?.server?.qualities || episodeContent.server.qualities.length === 0);
+
+        if (isEmptyEpisodePayload) {
+          try {
+            const forceResponse = await fetch(`${apiUrl}/episode/${episodeSlug}?forceMode=true`);
+            if (forceResponse.ok) {
+              const forcedData = await parseJsonResponse(forceResponse, 'episode API (forceMode)');
+              const forcedContent = forcedData?.data || forcedData;
+              if (forcedContent && (
+                forcedContent?.defaultStreamingUrl ||
+                (forcedContent?.server?.qualities && forcedContent.server.qualities.length > 0)
+              )) {
+                episodeContent = forcedContent;
+              }
+            }
+          } catch (forceErr) {
+            console.error('Force mode episode fetch failed:', forceErr);
+          }
         }
         
-        // IMPORTANT: Flatten nested qualities structure if needed
-        const flattenedServers = [];
-        if (serversList.length > 0 && serversList[0].qualities) {
-          // Server has nested structure with qualities
-          serversList.forEach(server => {
-            if (Array.isArray(server.qualities)) {
-              server.qualities.forEach(quality => {
-                const resolution = quality.title; // "360p", "480p", "720p"
-                if (Array.isArray(quality.serverList)) {
-                  quality.serverList.forEach(srv => {
-                    flattenedServers.push({
-                      resolution,
-                      title: srv.title,
-                      serverId: srv.serverId,
-                      href: srv.href,
-                      // Prefer direct href/url/link from API
-                      url: normalizeUrl(srv.href || srv.url || srv.link) || (srv.serverId ? `${apiUrl}/server/${srv.serverId}` : null)
-                    });
-                  });
-                }
-              });
+        // Extract servers - Otakudesu v3 uses server.qualities with serverList
+        let serversList = [];
+
+        const parseServerString = (raw) => {
+          if (typeof raw !== 'string') return null;
+          const match = raw.match(/^@\{(.+)\}$/);
+          const payload = match ? match[1] : raw;
+          const parts = payload.split(';').map(p => p.trim()).filter(Boolean);
+          const obj = {};
+          parts.forEach(part => {
+            const idx = part.indexOf('=');
+            if (idx > -1) {
+              const key = part.slice(0, idx).trim();
+              const value = part.slice(idx + 1).trim();
+              obj[key] = value;
             }
           });
-          serversList = flattenedServers;
+          return Object.keys(obj).length > 0 ? obj : null;
+        };
+
+        const extractFromQuality = (quality) => {
+          if (!quality) return;
+          const resolution = quality?.title || quality?.quality || quality?.resolution || 'Default';
+          let serverItems =
+            quality?.serverList ||
+            quality?.server_list ||
+            quality?.servers ||
+            quality?.server ||
+            quality?.links ||
+            [];
+
+          if (serverItems && !Array.isArray(serverItems) && typeof serverItems === 'object') {
+            serverItems = Object.values(serverItems);
+          }
+
+          if (Array.isArray(serverItems)) {
+            serverItems.forEach((srv) => {
+              const parsed = typeof srv === 'string' ? parseServerString(srv) : null;
+              const source = parsed || srv;
+              if (!source) return;
+              const serverId = source?.serverId || source?.id || source?.server_id || source?.serverID;
+              const directUrl = source?.href || source?.url || source?.link || source?.streamUrl;
+              serversList.push({
+                resolution,
+                title: source?.title || source?.name || 'Server',
+                serverId,
+                href: source?.href,
+                url: normalizeUrl(directUrl) || (serverId ? `${apiUrl}/server/${serverId}` : null)
+              });
+            });
+          }
+        };
+
+        // Handle nested qualities structure
+        const qualityContainers = [];
+        if (episodeContent?.server?.qualities) qualityContainers.push(episodeContent.server);
+        if (episodeContent?.servers?.qualities) qualityContainers.push(episodeContent.servers);
+
+        qualityContainers.forEach((container) => {
+          const qualities = Array.isArray(container?.qualities)
+            ? container.qualities
+            : Array.isArray(container?.qualities?.qualities)
+              ? container.qualities.qualities
+              : [];
+
+          qualities.forEach(extractFromQuality);
+        });
+
+        // Extra fallback: direct qualities in episode content
+        const directQualities = Array.isArray(episodeContent?.qualities)
+          ? episodeContent.qualities
+          : Array.isArray(episodeContent?.qualityList)
+            ? episodeContent.qualityList
+            : [];
+
+        if (serversList.length === 0 && directQualities.length > 0) {
+          directQualities.forEach(extractFromQuality);
+        }
+
+        // Fallback to flat server arrays if present
+        if (serversList.length === 0) {
+          if (Array.isArray(episodeContent.server)) {
+            serversList = episodeContent.server;
+          } else if (Array.isArray(episodeContent.servers)) {
+            serversList = episodeContent.servers;
+          } else if (Array.isArray(episodeContent.streams)) {
+            serversList = episodeContent.streams;
+          }
+        }
+
+        // Fallback: use defaultStreamingUrl as single server
+        if (serversList.length === 0 && episodeContent.defaultStreamingUrl) {
+          serversList = [{
+            title: 'Default Server',
+            url: episodeContent.defaultStreamingUrl
+          }];
         }
 
         serversList = serversList.map((server) => ({
@@ -249,6 +344,8 @@ function WatchPageContent({ params, episodeSlug }) {
             servers: episodeContent.servers,
             keys: Object.keys(episodeContent)
           });
+
+          // Try to resolve Otakudesu URL for fallback
           throw new Error(`Episode ini belum memiliki server streaming. Response keys: ${Object.keys(episodeContent).join(', ')}`);
         }
 
@@ -469,44 +566,160 @@ function WatchPageContent({ params, episodeSlug }) {
 
   // --- Sisa kode tidak berubah ---
 
-  // Fungsi Handle Klik Server
-  const handleServerClick = (server) => {
-    const serverUrl = normalizeUrl(server.url || server.link || server.href);
-    console.log("Selected server:", server);
-    console.log("Server URL:", serverUrl);
-    
-    setIsSwitchingServer(true);
-    setActiveIdentifier(serverUrl);
-    
-    // Jika URL adalah API endpoint (mengandung /server/), fetch streaming URL terlebih dahulu
-    if (serverUrl && serverUrl.includes('/server/')) {
-      fetch(serverUrl)
-        .then(async (res) => {
-          if (!res.ok) {
-            throw new Error(`Server API status ${res.status}`);
-          }
-          return parseJsonResponse(res, 'server API');
-        })
-        .then(data => {
-          console.log("Server data:", data);
-          // Extract actual streaming URL dari response
-          const streamUrl = data.data?.url || data.url || serverUrl;
-          console.log("Stream URL extracted:", streamUrl);
-          setCurrentStreamUrl(streamUrl);
-          setIsSwitchingServer(false);
-        })
-        .catch(err => {
-          console.error("Error fetching stream:", err);
-          setCurrentStreamUrl(serverUrl); // Fallback to original URL
-          setIsSwitchingServer(false);
-        });
-    } else {
-      // Direct URL, use as-is
-      setCurrentStreamUrl(serverUrl);
-      setTimeout(() => {
-        setIsSwitchingServer(false);
-      }, 300);
+  const getServerEndpoint = (server) => {
+    if (!server) return null;
+    const hrefEndpoint = server?.href ? normalizeUrl(server.href) : null;
+    if (hrefEndpoint) return hrefEndpoint;
+
+    if (server?.serverId) {
+      const encodedId = encodeURIComponent(server.serverId);
+      return normalizeUrl(`${apiUrl}/server/${encodedId}`);
     }
+
+    return normalizeUrl(server.url || server.link || server.streamUrl || server.playUrl);
+  };
+
+  const isApiServerEndpoint = (endpoint) => {
+    if (!endpoint || !apiUrl) return false;
+    try {
+      const apiBase = new URL(apiUrl);
+      const target = new URL(endpoint);
+      return target.origin === apiBase.origin && target.pathname.includes('/server/');
+    } catch {
+      return false;
+    }
+  };
+
+  const getServerMeta = (server, fallbackIndex = 0) => {
+    let resolution = '';
+    if (server?.resolution) {
+      resolution = String(server.resolution);
+    } else if (server?.quality) {
+      resolution = String(server.quality);
+    } else if (server?.name && typeof server.name === 'string') {
+      resolution = server.name;
+    } else if (server?.label && typeof server.label === 'string') {
+      resolution = server.label;
+    } else if (server?.title && typeof server.title === 'string' && server.title.length < 50) {
+      resolution = server.title;
+    } else if (server?.subtitle && typeof server.subtitle === 'string') {
+      resolution = server.subtitle;
+    }
+
+    const serverTitle = String(server?.title || server?.name || `server-${fallbackIndex + 1}`);
+
+    return {
+      resolution: String(resolution || '').trim(),
+      host: serverTitle.trim()
+    };
+  };
+
+  const isFallbackResponse = (data) => {
+    const source = data?.data?.source || data?.source || '';
+    return typeof source === 'string' && source.toLowerCase().includes('fallback');
+  };
+
+  const buildServerApiUrl = (endpoint, meta) => {
+    if (!endpoint) return endpoint;
+    try {
+      const url = new URL(endpoint);
+      if (meta?.resolution) url.searchParams.set('quality', meta.resolution);
+      if (meta?.host) url.searchParams.set('host', meta.host);
+      if (episodeSlug) url.searchParams.set('episode', episodeSlug);
+      url.searchParams.set('preferDownload', '1');
+      return url.toString();
+    } catch {
+      return endpoint;
+    }
+  };
+
+  const resolveServerStream = async (server, index = 0) => {
+    const serverEndpoint = getServerEndpoint(server);
+    const activeId = server?.serverId ? `server-${server.serverId}` : serverEndpoint;
+
+    if (serverEndpoint && isApiServerEndpoint(serverEndpoint)) {
+      const meta = getServerMeta(server, index);
+      const apiEndpoint = buildServerApiUrl(serverEndpoint, meta);
+      const res = await fetch(apiEndpoint, { cache: 'no-store' });
+      if (!res.ok) {
+        throw new Error(`Server API status ${res.status}`);
+      }
+      const data = await parseJsonResponse(res, 'server API');
+      const resolved = data?.data?.resolved ?? data?.resolved;
+      const streamUrl = data?.data?.url || data?.url || data?.data?.embedUrl || data?.embedUrl;
+
+      if (resolved === false || !streamUrl) {
+        return { ok: false, data, activeId };
+      }
+
+      const normalizedStreamUrl = normalizeUrl(streamUrl);
+      const finalUrl = withCacheBuster(normalizedStreamUrl, server?.serverId || activeId);
+      return { ok: true, data, activeId, finalUrl };
+    }
+
+    const finalUrl = withCacheBuster(serverEndpoint, server?.serverId || activeId);
+    return { ok: Boolean(finalUrl), data: null, activeId, finalUrl };
+  };
+
+  // Fungsi Handle Klik Server
+  const handleServerClick = async (server, index = 0) => {
+    setIsSwitchingServer(true);
+    setCurrentStreamUrl(null);
+    setFallbackNotice(null);
+
+    const initialMeta = getServerMeta(server, index);
+    const resolutionKey = initialMeta.resolution;
+    const tried = new Set();
+    let currentServer = server;
+    let currentIndex = index;
+    let lastResult = null;
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const result = await resolveServerStream(currentServer, currentIndex);
+        lastResult = result;
+        setLastServerResponse(result.data);
+        setLastResolvedUrl(result.finalUrl || null);
+
+        if (result.finalUrl) {
+          setActiveIdentifier(result.activeId);
+          setCurrentStreamUrl(result.finalUrl);
+        }
+
+        if (result.ok && !isFallbackResponse(result.data)) {
+          setIsSwitchingServer(false);
+          return;
+        }
+
+        const shouldTryAnother = Boolean(resolutionKey) && resolutionKey.toLowerCase() !== 'default';
+        if (!shouldTryAnother) break;
+
+        const serverKey = currentServer?.serverId || `idx-${currentIndex}`;
+        tried.add(serverKey);
+        const nextIndex = servers.findIndex((srv, idx) => {
+          if (idx === currentIndex) return false;
+          const key = srv?.serverId || `idx-${idx}`;
+          if (tried.has(key)) return false;
+          return getServerMeta(srv, idx).resolution === resolutionKey;
+        });
+
+        if (nextIndex === -1) break;
+
+        currentServer = servers[nextIndex];
+        currentIndex = nextIndex;
+      } catch (err) {
+        console.error("Error fetching stream:", err);
+        break;
+      }
+    }
+
+    if (lastResult?.ok && isFallbackResponse(lastResult?.data)) {
+      setFallbackNotice('Server mengembalikan kualitas default dari sumber (fallback).');
+    } else if (!lastResult?.ok) {
+      setFallbackNotice('Server tidak bisa di-resolve untuk kualitas ini.');
+    }
+
+    setIsSwitchingServer(false);
   };
 
   // Logika Membuat Slug Next/Prev
@@ -555,10 +768,10 @@ function WatchPageContent({ params, episodeSlug }) {
     return <WatchPageSkeleton />;
   }
   if (error) {
-    return <ErrorDisplay message={`${error} (Debug: Check console untuk detail lebih lanjut)`} animeSlug={null} />;
+    return <ErrorDisplay message={`${error} (Debug: Check console untuk detail lebih lanjut)`} />;
   }
   if (!servers || servers.length === 0) {
-    return <ErrorDisplay message={`Data episode tidak ditemukan atau tidak ada server tersedia untuk episode: ${episodeSlug}`} animeSlug={null} />;
+    return <ErrorDisplay message={`Data episode tidak ditemukan atau tidak ada server tersedia untuk episode: ${episodeSlug}`} />;
   }
 
   // --- RETURN JSX ---
@@ -632,7 +845,8 @@ function WatchPageContent({ params, episodeSlug }) {
               {servers && servers.length > 0 ? (
                 servers.map((server, index) => {
                   // Extract URL - try multiple possible property names
-                  const serverUrl = server.url || server.link || server.streamUrl || server.playUrl;
+                  const serverUrl = getServerEndpoint(server);
+                  const activeId = server?.serverId ? `server-${server.serverId}` : serverUrl;
                   
                   // Extract resolution dengan lebih comprehensive
                   let serverResolution = null;
@@ -663,12 +877,12 @@ function WatchPageContent({ params, episodeSlug }) {
                   
                   return (
                     <button
-                      key={serverUrl || index}
+                      key={activeId || index}
                       type="button"
-                      onClick={() => handleServerClick(server)}
+                      onClick={() => handleServerClick(server, index)}
                       disabled={isSwitchingServer || !serverUrl}
                       title={`Resolution: ${displayName}, URL: ${serverUrl || 'N/A'}`}
-                      className={`px-5 py-2 text-sm font-semibold rounded-lg transition-all duration-200 ease-in-out flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed ${activeIdentifier === serverUrl
+                      className={`px-5 py-2 text-sm font-semibold rounded-lg transition-all duration-200 ease-in-out flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed ${activeIdentifier === activeId
                           ? 'bg-pink-600 text-white shadow-lg shadow-pink-600/30 ring-2 ring-pink-400'
                           : 'bg-neutral-700 text-neutral-300 hover:bg-neutral-600 hover:text-white'
                         }`}
@@ -683,6 +897,25 @@ function WatchPageContent({ params, episodeSlug }) {
             </div>
           </div>
         </div>
+
+        {fallbackNotice && (
+          <div className="bg-neutral-900 p-4 rounded-lg mb-4 text-sm text-yellow-200 border border-yellow-500/40">
+            {fallbackNotice}
+          </div>
+        )}
+
+        {isDebug && (
+          <div className="bg-neutral-900 p-4 rounded-lg mb-4 text-xs text-neutral-300 space-y-2">
+            <div><span className="text-neutral-400">Active:</span> {activeIdentifier || '-'} </div>
+            <div className="break-all"><span className="text-neutral-400">Resolved URL:</span> {lastResolvedUrl || '-'}</div>
+            <div className="break-all"><span className="text-neutral-400">Iframe URL:</span> {currentStreamUrl || '-'}</div>
+            {lastServerResponse && (
+              <pre className="whitespace-pre-wrap bg-neutral-800 p-3 rounded-md max-h-64 overflow-auto">
+{JSON.stringify(lastServerResponse?.data || lastServerResponse, null, 2)}
+              </pre>
+            )}
+          </div>
+        )}
 
         {/* Episode List Section */}
         {episodeList && episodeList.length > 0 ? (

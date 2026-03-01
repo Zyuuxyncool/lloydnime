@@ -26,18 +26,34 @@ async function fetchSchedule() {
     }
     const result = await response.json();
     const data = result?.data || result;
-    const schedule = data?.schedule || {};
 
-    const normalized = Object.entries(schedule).reduce((acc, [day, animes]) => {
-      acc[day] = (animes || []).map((anime) => ({
-        ...anime,
-        slug: anime?.slug || anime?.animeId || anime?.anime_id,
-        poster: anime?.poster || anime?.image || anime?.thumbnail,
-        episode: anime?.episode || anime?.episodes || anime?.latestEpisode,
-        status_or_day: anime?.status_or_day || anime?.status || anime?.release_day,
-      }));
-      return acc;
-    }, {});
+    let normalized = {};
+
+    if (Array.isArray(data)) {
+      data.forEach((entry) => {
+        const day = entry?.day?.toString()?.toLowerCase() || '';
+        if (!day) return;
+        normalized[day] = (entry?.anime_list || entry?.animeList || []).map((anime) => ({
+          ...anime,
+          slug: anime?.slug || anime?.animeId || anime?.anime_id,
+          poster: anime?.poster || anime?.image || anime?.thumbnail,
+          episode: anime?.episode || anime?.episodes || anime?.latestEpisode,
+          status_or_day: anime?.status_or_day || anime?.status || anime?.releaseDay || anime?.release_day,
+        }));
+      });
+    } else {
+      const schedule = data?.schedule || {};
+      normalized = Object.entries(schedule).reduce((acc, [day, animes]) => {
+        acc[day] = (animes || []).map((anime) => ({
+          ...anime,
+          slug: anime?.slug || anime?.animeId || anime?.anime_id,
+          poster: anime?.poster || anime?.image || anime?.thumbnail,
+          episode: anime?.episode || anime?.episodes || anime?.latestEpisode,
+          status_or_day: anime?.status_or_day || anime?.status || anime?.releaseDay || anime?.release_day,
+        }));
+        return acc;
+      }, {});
+    }
 
     return normalized;
   } catch (error) {

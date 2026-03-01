@@ -46,8 +46,7 @@ async function searchAnime(slug) {
     const encodedKeyword = encodeURIComponent(keyword);
     
     const endpoints = [
-      `${apiUrl}/search/${encodedKeyword}`,
-      `${apiUrl}/animasu/search/${encodedKeyword}`
+      `${apiUrl}/search/${encodedKeyword}`
     ];
 
     let animes = [];
@@ -75,23 +74,12 @@ async function searchAnime(slug) {
         const rawAnimes = data?.animeList || data?.animes || result?.animes || result?.animeList || [];
 
         animes = rawAnimes.map((anime) => {
-          // Extract and clean slug properly
-          let cleanSlug = anime?.slug || anime?.animeId || anime?.anime_id || anime?.id || null;
-          
-          if (cleanSlug && typeof cleanSlug === 'string') {
-            // Remove leading/trailing slashes and get last segment if it's a path
-            cleanSlug = cleanSlug.trim().replace(/^\/+|\/+$/g, '');
-            if (cleanSlug.includes('/')) {
-              const parts = cleanSlug.split('/').filter(Boolean);
-              cleanSlug = parts[parts.length - 1] || null;
-            }
-            // Ensure it's not empty after cleaning
-            cleanSlug = cleanSlug || null;
-          }
+          // Otakudesu API v3 uses animeId as slug
+          const slug = anime?.animeId || anime?.slug || anime?.anime_id || anime?.id;
           
           return {
             ...anime,
-            slug: cleanSlug,
+            slug: slug,
             poster: anime?.poster || anime?.image || anime?.thumbnail,
             episode: anime?.episode || anime?.episodes || anime?.latestEpisode,
           };

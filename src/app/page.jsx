@@ -69,22 +69,21 @@ async function fetchAndFilterAnime(baseUrl, endpoint, desiredLimit = 10) {
       const rawList = data?.data?.animeList || data?.data?.animes || data?.animeList || data?.animes || [];
 
       const animesOnThisPage = rawList.map((anime) => {
-        const fallbackFromLink =
-          (typeof anime?.link === 'string' && anime.link.split('/').filter(Boolean).pop()) ||
-          (typeof anime?.href === 'string' && anime.href.split('/').filter(Boolean).pop());
+        // Otakudesu API v3 uses 'animeId' as the slug
+        const slug = anime?.animeId || anime?.slug || anime?.anime_id;
 
         return {
           ...anime,
-          slug: anime?.slug || anime?.animeId || anime?.anime_id || fallbackFromLink,
+          slug: slug,
           poster: anime?.poster || anime?.image || anime?.thumbnail,
           episodes: anime?.episodes || anime?.episode || anime?.latestEpisode,
           releaseDay: anime?.releaseDay || anime?.release_day || anime?.status_or_day || anime?.status,
         };
       });
 
-      // Filter anime di halaman ini (Sanka API tidak punya type, ambil semua)
+      // Filter anime di halaman ini dan pastikan ada slug
       const validAnimes = animesOnThisPage.filter(anime => 
-        anime.title // Pastikan ada judul
+        anime.title && anime.slug // Pastikan ada judul DAN slug
       );
 
       // Tambahkan hasil filter ke array utama
@@ -156,8 +155,8 @@ const Home = async () => {
   // dan masing-masing akan melakukan looping fetch internal jika diperlukan.
   try {
     const [ongoingResult, completedResult] = await Promise.allSettled([
-      fetchAndFilterAnime(apiUrl, ['ongoing-anime', 'animasu/ongoing'], 10),
-      fetchAndFilterAnime(apiUrl, ['complete-anime', 'completed-anime', 'animasu/completed'], 10)
+      fetchAndFilterAnime(apiUrl, 'ongoing-anime', 10),
+      fetchAndFilterAnime(apiUrl, 'complete-anime', 10)
     ]);
 
     if (ongoingResult.status === 'fulfilled') {

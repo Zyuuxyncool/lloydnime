@@ -68,7 +68,7 @@ function LetterFilter({ selectedLetter, onLetterChange }) {
 async function fetchAnimePage(page, letter) {
     try {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-        const response = await fetch(`${apiUrl}/unlimited?letter=${letter}&page=${page}`);
+        const response = await fetch(`${apiUrl}/anime?letter=${letter}&page=${page}`);
 
         if (!response.ok) {
             throw new Error(`Gagal mengambil data: ${response.status}`);
@@ -76,12 +76,23 @@ async function fetchAnimePage(page, letter) {
 
         const result = await response.json();
         const data = result?.data || result;
-        const list = data?.animeList || data?.animes || result?.animeList || result?.animes || [];
+        const groupedList = Array.isArray(data?.list) ? data.list : null;
+
+        let list = [];
+        if (groupedList) {
+            if (page > 1) {
+                return [];
+            }
+            const group = groupedList.find((item) => String(item?.startWith || '').toUpperCase() === String(letter).toUpperCase());
+            list = group?.animeList || [];
+        } else {
+            list = data?.animeList || data?.animes || result?.animeList || result?.animes || [];
+        }
 
         return list.map((anime) => ({
             ...anime,
-            slug: anime?.slug || anime?.animeId || anime?.anime_id || anime?.id,
-            poster: anime?.poster || anime?.image || anime?.thumbnail,
+            slug: anime?.animeId || anime?.slug || anime?.anime_id || anime?.id,
+            poster: anime?.poster || anime?.image || anime?.thumbnail || 'https://placehold.co/400x600/171717/ef4444?text=No+Image',
         }));
 
     } catch (error) {
@@ -91,12 +102,18 @@ async function fetchAnimePage(page, letter) {
 }
 
 
+
 export default function AnimeListClient({ initialData, initialLetter }) {
     const [animes, setAnimes] = useState(initialData || []);
     const [page, setPage] = useState(2); // Halaman BERIKUTNYA yang akan diambil
     const [isLoading, setIsLoading] = useState(false);
     const [hasMore, setHasMore] = useState(true);
     const loaderRef = useRef(null);
+    const posterCacheRef = useRef(new Map());
+    const posterInFlightRef = useRef(new Set());
+    const [posterCache, setPosterCache] = useState({});
+
+    const NO_IMAGE_URL = 'https://placehold.co/400x600/171717/ef4444?text=No+Image';
 
     // --- STATE BARU ---
     // Melacak huruf mana yang sedang aktif
@@ -174,6 +191,51 @@ export default function AnimeListClient({ initialData, initialLetter }) {
         };
     }, [loadMoreAnimes]); // 'loadMoreAnimes' sudah memiliki semua dependensi yang benar
 
+    useEffect(() => {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+        if (!apiUrl) return;
+
+        const missingPosters = animes
+            .filter((anime) => anime?.slug)
+            .filter((anime) => !anime?.poster || anime.poster === NO_IMAGE_URL)
+            .filter((anime) => !posterCacheRef.current.has(anime.slug))
+            .filter((anime) => !posterInFlightRef.current.has(anime.slug))
+            .slice(0, 8);
+
+        if (missingPosters.length === 0) return;
+
+        const fetchMissingPosters = async () => {
+            await Promise.all(
+                missingPosters.map(async (anime) => {
+                    const slug = anime.slug;
+                    posterInFlightRef.current.add(slug);
+                    try {
+                        const response = await fetch(`${apiUrl}/anime?slug=${slug}`);
+                        if (!response.ok) return;
+                        const result = await response.json();
+                        const data = result?.data || result;
+                        const detail = data?.detail || data?.list?.[0] || data;
+                        const poster = detail?.poster || detail?.image || detail?.thumbnail;
+
+                        if (poster) {
+                            posterCacheRef.current.set(slug, poster);
+                            setPosterCache((prev) => ({
+                                ...prev,
+                                [slug]: poster,
+                            }));
+                        }
+                    } catch (error) {
+                        console.error('Gagal mengambil poster anime:', error);
+                    } finally {
+                        posterInFlightRef.current.delete(slug);
+                    }
+                })
+            );
+        };
+
+        fetchMissingPosters();
+    }, [animes]);
+
     return (
         <div>
             {/* --- Menampilkan Filter Huruf A-Z --- */}
@@ -190,7 +252,13 @@ export default function AnimeListClient({ initialData, initialLetter }) {
             ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-6">
                     {animes.map((anime, index) => (
-                        <AnimeCard key={`${anime.slug || anime.title || 'animelist'}-${index}`} anime={anime} />
+                        <AnimeCard
+                            key={`${anime.slug || anime.title || 'animelist'}-${index}`}
+                            anime={{
+                                ...anime,
+                                poster: posterCache[anime.slug] || anime.poster,
+                            }}
+                        />
                     ))}
                 </div>
             )}

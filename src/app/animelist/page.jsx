@@ -9,7 +9,7 @@ import BreadcrumbNavigation from '../components/BreadcrumbNavigation';
 async function getInitialAnime(letter, page) {
     try {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-        const response = await fetch(`${apiUrl}/unlimited?letter=${letter}&page=${page}`, { 
+        const response = await fetch(`${apiUrl}/anime?letter=${letter}&page=${page}`, { 
             cache: 'no-store' // Data anime list sebaiknya jangan di-cache terlalu lama
         }); 
         
@@ -19,12 +19,20 @@ async function getInitialAnime(letter, page) {
         
                 const result = await response.json();
                 const data = result?.data || result;
-                const list = data?.animeList || data?.animes || result?.animeList || result?.animes || [];
+                const groupedList = Array.isArray(data?.list) ? data.list : null;
+
+                let list = [];
+                if (groupedList) {
+                    const group = groupedList.find((item) => String(item?.startWith || '').toUpperCase() === String(letter).toUpperCase());
+                    list = group?.animeList || [];
+                } else {
+                    list = data?.animeList || data?.animes || result?.animeList || result?.animes || [];
+                }
 
                 return list.map((anime) => ({
                     ...anime,
-                    slug: anime?.slug || anime?.animeId || anime?.anime_id || anime?.id,
-                    poster: anime?.poster || anime?.image || anime?.thumbnail,
+                    slug: anime?.animeId || anime?.slug || anime?.anime_id,
+                    poster: anime?.poster || anime?.image || anime?.thumbnail || 'https://placehold.co/400x600/171717/ef4444?text=No+Image',
                 }));
         
     } catch (error) {
