@@ -151,8 +151,8 @@ async function getDetailAnime(slug) {
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     const endpoints = [
-      `${apiUrl}/anime?slug=${encodeURIComponent(safeSlug)}`,
-      `${apiUrl}/anime?slug=${encodeURIComponent(safeSlug.toLowerCase())}`
+      `${apiUrl}/${encodeURIComponent(safeSlug)}`,
+      `${apiUrl}/${encodeURIComponent(safeSlug.toLowerCase())}`
     ];
 
     for (const endpoint of endpoints) {
