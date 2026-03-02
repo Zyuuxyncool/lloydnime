@@ -6,6 +6,8 @@ import Link from "next/link";
 import BreadcrumbNavigation from "@/app/components/BreadcrumbNavigation";
 import prisma from "@/app/libs/prisma";
 
+export const dynamic = 'force-dynamic';
+
 // Helper function untuk get badge berdasarkan level
 function getLevelBadge(level) {
   if (level >= 13) return "Ota-King";        // 12+ jam (720+ menit) - MAX TIER
@@ -108,6 +110,7 @@ async function DashboardPage() {
     }).catch(() => 0); // Fallback to 0 if error
 
     const { name, email, image, totalWatchMinutes, level, nextLevelMinutes } = userData;
+    const profileImage = image || 'https://placehold.co/200x200/27272a/ffffff?text=User';
     
     // Ensure all values are defined
     const safeLevel = level ?? 1;
@@ -144,7 +147,7 @@ async function DashboardPage() {
             
             {/* Avatar dengan frame dinamis */}
             <Image
-              src={image}
+              src={profileImage}
               alt="Foto Profil"
               width={100}
               height={100}

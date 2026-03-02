@@ -252,7 +252,9 @@ function WatchPageContent({ params, episodeSlug }) {
 
         const extractFromQuality = (quality) => {
           if (!quality) return;
-          const resolution = quality?.title || quality?.quality || quality?.resolution || 'Default';
+          // Prioritize: title > quality > resolution (untuk case server.qualities dengan title = "720p")
+          const qualityTitle = quality?.title || quality?.quality || quality?.resolution || 'Default';
+          
           let serverItems =
             quality?.serverList ||
             quality?.server_list ||
@@ -265,7 +267,7 @@ function WatchPageContent({ params, episodeSlug }) {
             serverItems = Object.values(serverItems);
           }
 
-          if (Array.isArray(serverItems)) {
+          if (Array.isArray(serverItems) && serverItems.length > 0) {
             serverItems.forEach((srv) => {
               const parsed = typeof srv === 'string' ? parseServerString(srv) : null;
               const source = parsed || srv;
@@ -273,7 +275,8 @@ function WatchPageContent({ params, episodeSlug }) {
               const serverId = source?.serverId || source?.id || source?.server_id || source?.serverID;
               const directUrl = source?.href || source?.url || source?.link || source?.streamUrl;
               serversList.push({
-                resolution,
+                resolution: String(qualityTitle).trim(),
+                quality: String(qualityTitle).trim(),
                 title: source?.title || source?.name || 'Server',
                 serverId,
                 href: source?.href,
@@ -352,22 +355,91 @@ function WatchPageContent({ params, episodeSlug }) {
         setEpisodeTitle(episodeContent.title);
         setServers(serversList);
 
-        // Set default stream URL - prefer defaultStreamingUrl if available
-        const defaultServer = serversList[0];
-        let defaultStreamUrl = episodeContent.defaultStreamingUrl;
-        
-        if (!defaultStreamUrl && defaultServer) {
-          defaultStreamUrl = defaultServer.url || defaultServer.link || defaultServer.streamUrl || defaultServer.href;
+        // Auto pilih kualitas terbaik agar tidak selalu jatuh ke "default/auto"
+        const extractResolutionText = (server) => String(
+          server?.resolution ||
+          server?.quality ||
+          server?.label ||
+          server?.subtitle ||
+          ''
+        ).toLowerCase();
+
+        const getResolutionScore = (server) => {
+          const text = extractResolutionText(server);
+          if (/2160|4k/.test(text)) return 2160;
+          if (/1440/.test(text)) return 1440;
+          if (/1080/.test(text)) return 1080;
+          if (/720/.test(text)) return 720;
+          if (/480/.test(text)) return 480;
+          if (/360/.test(text)) return 360;
+          if (/240/.test(text)) return 240;
+          if (/auto|default/.test(text)) return 1;
+          return 0;
+        };
+
+        const rankedServers = [...serversList]
+          .map((server, idx) => ({ server, idx, score: getResolutionScore(server) }))
+          .sort((a, b) => b.score - a.score);
+
+        const best = rankedServers[0];
+        let chosenUrl = null;
+        let chosenIdentifier = null;
+
+        if (best?.server) {
+          const rawEndpoint = normalizeUrl(
+            best.server?.url ||
+            best.server?.href ||
+            best.server?.link ||
+            best.server?.streamUrl
+          );
+
+          if (rawEndpoint) {
+            const isServerApiEndpoint = rawEndpoint.includes('/server/');
+            if (isServerApiEndpoint) {
+              try {
+                const endpointUrl = new URL(rawEndpoint);
+                const qualityText = String(best.server?.resolution || best.server?.quality || '').trim();
+                if (qualityText) endpointUrl.searchParams.set('quality', qualityText);
+                endpointUrl.searchParams.set('preferDownload', '1');
+                if (episodeSlug) endpointUrl.searchParams.set('episode', episodeSlug);
+
+                const resolvedResponse = await fetch(endpointUrl.toString(), { cache: 'no-store' });
+                if (resolvedResponse.ok) {
+                  const resolvedData = await parseJsonResponse(resolvedResponse, 'initial server resolve');
+                  const streamUrl =
+                    resolvedData?.data?.url ||
+                    resolvedData?.url ||
+                    resolvedData?.streamUrl ||
+                    resolvedData?.link ||
+                    null;
+
+                  if (streamUrl) {
+                    chosenUrl = normalizeUrl(streamUrl);
+                    chosenIdentifier = best.server?.serverId ? `server-${best.server.serverId}` : rawEndpoint;
+                  }
+                }
+              } catch (err) {
+                console.warn('Initial best-quality resolve failed:', err?.message || err);
+              }
+            } else {
+              chosenUrl = rawEndpoint;
+              chosenIdentifier = best.server?.serverId ? `server-${best.server.serverId}` : rawEndpoint;
+            }
+          }
         }
 
-        defaultStreamUrl = normalizeUrl(defaultStreamUrl);
-        
-        if (defaultStreamUrl) {
-          // Jika URL adalah API endpoint, jangan set langsung (user harus klik dulu)
-          if (!defaultStreamUrl.includes('/server/')) {
-            setCurrentStreamUrl(defaultStreamUrl);
-            setActiveIdentifier(defaultStreamUrl);
+        // Fallback terakhir jika resolve server terbaik gagal
+        if (!chosenUrl) {
+          const fallbackUrl = normalizeUrl(episodeContent.defaultStreamingUrl || serversList?.[0]?.url);
+          if (fallbackUrl && !fallbackUrl.includes('/server/')) {
+            chosenUrl = fallbackUrl;
+            chosenIdentifier = fallbackUrl;
           }
+        }
+
+        if (chosenUrl) {
+          setCurrentStreamUrl(withCacheBuster(chosenUrl, chosenIdentifier || 'auto-best'));
+          setActiveIdentifier(chosenIdentifier || chosenUrl);
         } else {
           setCurrentStreamUrl(null);
         }
@@ -591,17 +663,14 @@ function WatchPageContent({ params, episodeSlug }) {
   };
 
   const getServerMeta = (server, fallbackIndex = 0) => {
+    // Priority: resolution > quality (dari extractFromQuality), fallback ke other fields
     let resolution = '';
     if (server?.resolution) {
       resolution = String(server.resolution);
     } else if (server?.quality) {
       resolution = String(server.quality);
-    } else if (server?.name && typeof server.name === 'string') {
-      resolution = server.name;
     } else if (server?.label && typeof server.label === 'string') {
       resolution = server.label;
-    } else if (server?.title && typeof server.title === 'string' && server.title.length < 50) {
-      resolution = server.title;
     } else if (server?.subtitle && typeof server.subtitle === 'string') {
       resolution = server.subtitle;
     }

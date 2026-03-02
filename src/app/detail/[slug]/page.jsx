@@ -5,6 +5,64 @@ import Navigation from '@/app/components/Navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 
+function parseLastPathSegment(url = '') {
+  const raw = String(url || '').trim();
+  if (!raw) return '';
+
+  try {
+    const normalized = raw.startsWith('http') ? raw : `https://dummy.local${raw.startsWith('/') ? '' : '/'}${raw}`;
+    const pathname = new URL(normalized).pathname;
+    return pathname.split('/').filter(Boolean).pop() || '';
+  } catch {
+    return raw.split(/[?#]/)[0].split('/').filter(Boolean).pop() || '';
+  }
+}
+
+function normalizeDetailPayload(result) {
+  const payload = result?.data || result || {};
+  const detail =
+    payload?.detail ||
+    payload?.anime ||
+    payload?.data?.detail ||
+    result?.detail ||
+    result?.anime ||
+    null;
+
+  const payloadEpisodeList =
+    payload?.episodeList ||
+    payload?.episodes ||
+    payload?.listEpisode ||
+    payload?.episode_list ||
+    result?.episodeList ||
+    [];
+
+  if (!detail || typeof detail !== 'object') {
+    return {
+      detail: payload && typeof payload === 'object' ? payload : null,
+      episodeList: Array.isArray(payloadEpisodeList) ? payloadEpisodeList : [],
+    };
+  }
+
+  const detailEpisodeList =
+    detail?.episodeList ||
+    detail?.episodes ||
+    detail?.listEpisode ||
+    detail?.episode_list ||
+    [];
+
+  const mergedEpisodeList = Array.isArray(detailEpisodeList) && detailEpisodeList.length > 0
+    ? detailEpisodeList
+    : (Array.isArray(payloadEpisodeList) ? payloadEpisodeList : []);
+
+  return {
+    detail: {
+      ...detail,
+      episodeList: mergedEpisodeList,
+    },
+    episodeList: mergedEpisodeList,
+  };
+}
+
 // Fallback fetch menggunakan Jikan API
 async function getDetailAnimeFallback(slug) {
   try {
@@ -111,8 +169,9 @@ async function getDetailAnime(slug) {
         }
 
         const result = await response.json();
+        const normalized = normalizeDetailPayload(result);
         const animeData =
-          result?.data?.detail ||
+          normalized?.detail ||
           result?.data?.list?.[0] ||
           result?.data ||
           result?.detail ||
@@ -120,9 +179,14 @@ async function getDetailAnime(slug) {
 
         if (
           animeData &&
-          (animeData.title || animeData.episodeList || animeData.info?.episodeList)
+          (animeData.title || animeData.episodeList || animeData.info?.episodeList || normalized?.episodeList?.length > 0)
         ) {
-          return animeData;
+          return {
+            ...animeData,
+            episodeList: Array.isArray(animeData.episodeList) && animeData.episodeList.length > 0
+              ? animeData.episodeList
+              : normalized?.episodeList || [],
+          };
         }
       } catch {
         continue;
@@ -223,6 +287,7 @@ export default async function DetailAnimePage({ params: paramsPromise }) {
     anime.episodes,
     anime.episode_list,
     anime.episode,
+    anime.listEpisode,
     anime.latestEpisodes,
     []
   );
@@ -233,11 +298,15 @@ export default async function DetailAnimePage({ params: paramsPromise }) {
   const episodeList = (Array.isArray(rawEpisodes) ? rawEpisodes : []).map((episode, index) => {
     const watchSlug =
       episode?.episodeId ||
+      episode?.episodeID ||
+      episode?.episode_id ||
       episode?.slug ||
+      episode?.slugEpisode ||
       episode?.episodeSlug ||
       episode?.id ||
-      (typeof episode?.link === 'string' && episode.link.split('/').filter(Boolean).pop()) ||
-      (typeof episode?.href === 'string' && episode.href.split('/').filter(Boolean).pop()) ||
+      (typeof episode?.link === 'string' && parseLastPathSegment(episode.link)) ||
+      (typeof episode?.href === 'string' && parseLastPathSegment(episode.href)) ||
+      (typeof episode?.otakudesuUrl === 'string' && parseLastPathSegment(episode.otakudesuUrl)) ||
       '';
 
     // Extract episode number from various sources

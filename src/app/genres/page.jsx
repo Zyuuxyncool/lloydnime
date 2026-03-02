@@ -5,27 +5,23 @@ import Header from '@/app/components/Header';
 import Link from 'next/link';
 import Image from 'next/image';
 
+export const dynamic = 'force-dynamic';
+
 async function getGenres() {
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api-otakudesu-zeta.vercel.app/anime';
     const genreUrl = `${apiUrl}/genre`;
-    
-    console.log('Fetching genres from:', genreUrl);
-    
+
     const response = await fetch(genreUrl, {
       cache: 'no-store'
     });
-    
-    console.log('Genres response status:', response.status);
-    
+
     if (!response.ok) {
-      console.error('Failed to fetch genres:', response.status);
       return [];
     }
-    
+
     const result = await response.json();
-    console.log('Genres data structure:', Object.keys(result));
-    
+
     const data = result?.data || result;
     const genres = data?.genreList || data?.genres || result?.genres || [];
     
@@ -34,8 +30,7 @@ async function getGenres() {
       slug: genre.genreId || genre.slug || genre.genre || genre.name,
       name: genre.title || genre.name || genre.genreId
     }));
-    
-    console.log(`Found ${mappedGenres.length} genres`);
+
     return mappedGenres;
   } catch (error) {
     console.error("Error fetching genres:", error);
@@ -45,7 +40,7 @@ async function getGenres() {
 
 async function getSampleAnimeForGenre(slug) {
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api-otakudesu-zeta.vercel.app/anime';
     const response = await fetch(`${apiUrl}/genre/${slug}?page=1`, {
       next: { revalidate: 86400 }
     });

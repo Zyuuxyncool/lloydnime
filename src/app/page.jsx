@@ -8,12 +8,28 @@ import React from 'react';
 import Navbar from "./components/Navbar"; 
 import { AuthUserSession } from "./libs/auth-libs"; 
 
-// ... (Komponen ApiWarningMessage dan AnimeListSkeleton Anda tidak berubah) ...
 function ApiWarningMessage({ sectionTitle }) {
-  // ... (tidak berubah)
+  return (
+    <div className="mx-4 md:mx-24 my-4 rounded-lg border border-yellow-500/40 bg-yellow-500/10 p-4 text-yellow-100">
+      <p className="font-semibold">Data {sectionTitle} sedang bermasalah.</p>
+      <p className="text-sm text-yellow-200/90 mt-1">
+        Silakan refresh beberapa saat lagi. Sistem sedang mencoba sumber data cadangan.
+      </p>
+    </div>
+  );
 }
 function AnimeListSkeleton() {
-  // ... (tidak berubah)
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 my-12 mx-4 md:mx-24 gap-4 md:gap-6">
+      {Array.from({ length: 10 }).map((_, idx) => (
+        <div key={idx} className="animate-pulse">
+          <div className="aspect-[2/3] w-full rounded-lg bg-neutral-800" />
+          <div className="mt-2 h-4 rounded bg-neutral-800" />
+          <div className="mt-2 h-3 w-2/3 rounded bg-neutral-800" />
+        </div>
+      ))}
+    </div>
+  );
 }
 // -----------------------------------------------------------------
 
@@ -26,7 +42,6 @@ async function fetchAndFilterAnime(baseUrl, endpoint, desiredLimit = 10) {
   let filteredAnimes = []; // Array untuk menampung hasil
   let currentPage = 1;
   let hasNextPage = true;
-  const validTypes = ['TV', 'Movie', 'Spesial']; // Tipe yang kita inginkan
 
   // Kita batasi 5 halaman fetch per section
   // agar server tidak looping selamanya jika ada error
@@ -39,7 +54,6 @@ async function fetchAndFilterAnime(baseUrl, endpoint, desiredLimit = 10) {
   ) {
     try {
       let data = null;
-      let activeEndpoint = null;
 
       for (const candidate of endpointCandidates) {
         const response = await fetch(`${baseUrl}/${candidate}?page=${currentPage}`);
@@ -58,7 +72,6 @@ async function fetchAndFilterAnime(baseUrl, endpoint, desiredLimit = 10) {
         }
 
         data = await response.json();
-        activeEndpoint = candidate;
         break;
       }
 
@@ -142,7 +155,7 @@ async function fetchFallbackAnime(section = 'ongoing', desiredLimit = 10) {
 
 // Komponen Home Anda (sudah async)
 const Home = async () => {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api-otakudesu-zeta.vercel.app/anime';
   const user = await AuthUserSession();
 
   let animeOngoing = [];

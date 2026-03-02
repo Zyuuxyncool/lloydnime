@@ -4,17 +4,20 @@ import React from 'react'
 
 const AnimeCard = ({ title, image, slug, episode, statusOrDay, type, priority = false }) => {
   const detailHref = slug ? `/detail/${slug}` : '#';
+  const safeImage = image || 'https://placehold.co/400x600/27272a/ffffff?text=No+Image';
+  const statusText = typeof statusOrDay === 'string' ? statusOrDay.replace('✓', '').trim() : '';
 
   return (
     <Link
       href={detailHref}
+      aria-disabled={!slug}
       className="group will-change-transform" // <-- TAMBAHKAN DI SINI
     >
       <div className="flex flex-col h-full">
 
         <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg">
           <Image
-            src={image} // Poster dari API
+            src={safeImage} // Poster dari API
             alt={title}
             fill
             priority={priority}
@@ -23,8 +26,6 @@ const AnimeCard = ({ title, image, slug, episode, statusOrDay, type, priority = 
           />
 
           {/* <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent"></div> */}
-
-          // Di dalam AnimeCard.js
 
           {/* Badge TYPE baru (pojok kanan atas) */}
           {type && (
@@ -47,9 +48,9 @@ const AnimeCard = ({ title, image, slug, episode, statusOrDay, type, priority = 
           </h3>
 
           {/* Teks sub-judul (Hari rilis atau status) */}
-          {statusOrDay && (
+          {statusText && (
             <div className="mt-1 flex items-center gap-1.5 text-xs text-neutral-400">
-              <span>{statusOrDay.replace('✓', '')}</span>
+              <span>{statusText}</span>
             </div>
           )}
         </div>

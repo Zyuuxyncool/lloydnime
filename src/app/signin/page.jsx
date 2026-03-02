@@ -14,12 +14,18 @@ export default function SignInPage() {
     { title: 'Sign In', href: '/signin' }
   ];
   const [providers, setProviders] = useState(null);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     // Ambil daftar provider (Google, GitHub) saat komponen dimuat
     const fetchProviders = async () => {
-      const res = await getProviders();
-      setProviders(res);
+      try {
+        const res = await getProviders();
+        setProviders(res || {});
+      } catch {
+        setProviders({});
+        setLoadError('Gagal memuat provider login. Coba refresh halaman.');
+      }
     };
     fetchProviders();
   }, []);
@@ -31,6 +37,8 @@ export default function SignInPage() {
       </div>
     );
   }
+
+  const providerList = Object.values(providers || {});
 
   // Objek untuk ikon (opsional)
   const providerIcons = {
@@ -47,12 +55,24 @@ export default function SignInPage() {
         <h2 className="text-2xl font-bold text-center text-white">
           Login Ke LloydNime
         </h2>
+
+        {loadError && (
+          <p className="text-sm text-red-300 text-center bg-red-500/10 border border-red-500/30 rounded-md p-2">
+            {loadError}
+          </p>
+        )}
+
+        {providerList.length === 0 && (
+          <p className="text-sm text-yellow-200 text-center bg-yellow-500/10 border border-yellow-500/30 rounded-md p-2">
+            Provider login belum dikonfigurasi. Isi env OAuth terlebih dahulu.
+          </p>
+        )}
         
         <div className="space-y-4">
           {/* Looping semua provider yang Anda daftarkan 
             di file route.js (Google, GitHub)
           */}
-          {Object.values(providers).map((provider) => (
+          {providerList.map((provider) => (
             <button
               key={provider.name}
               // Ini adalah fungsi utama untuk memicu login
