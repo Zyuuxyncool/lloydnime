@@ -413,7 +413,6 @@ function WatchPageContent({ params, episodeSlug }) {
                 const endpointUrl = new URL(rawEndpoint);
                 const qualityText = String(best.server?.resolution || best.server?.quality || '').trim();
                 if (qualityText) endpointUrl.searchParams.set('quality', qualityText);
-                endpointUrl.searchParams.set('preferDownload', '1');
                 if (episodeSlug) endpointUrl.searchParams.set('episode', episodeSlug);
 
                 const resolvedResponse = await fetch(endpointUrl.toString(), { cache: 'no-store' });
@@ -723,7 +722,6 @@ function WatchPageContent({ params, episodeSlug }) {
         url.searchParams.set('episode', episodeSlug);
       }
       
-      url.searchParams.set('preferDownload', '1');
       
       const finalUrl = url.toString();
       console.log(`Built API URL for quality [${meta?.resolution}]: ${finalUrl}`);
