@@ -443,6 +443,8 @@ function WatchPageContent({ params, episodeSlug }) {
                     chosenUrl = normalizeUrl(streamUrl);
                     chosenIdentifier = best.server?.serverId ? `server-${best.server.serverId}` : rawEndpoint;
                     console.log(`✅ Auto-selected ${qualityText} stream, ID: ${chosenIdentifier}`);
+                    console.log(`Final embed URL returned from API: ${streamUrl}`);
+                    console.log(`Full API response:`, resolvedData);
                   }
                 }
               } catch (err) {
@@ -766,6 +768,9 @@ function WatchPageContent({ params, episodeSlug }) {
       const resolved = data?.data?.resolved ?? data?.resolved;
       const streamUrl = data?.data?.url || data?.url || data?.data?.embedUrl || data?.embedUrl;
 
+      console.log(`resolveServerStream API response for quality [${meta?.resolution}]:`, data);
+      console.log(`Extracted stream URL: ${streamUrl}, resolved status: ${resolved}`);
+
       if (resolved === false || !streamUrl) {
         return { ok: false, data, activeId };
       }
@@ -805,6 +810,7 @@ function WatchPageContent({ params, episodeSlug }) {
           setActiveIdentifier(result.activeId);
           setCurrentStreamUrl(result.finalUrl);
           console.log(`✅ Stream loaded with quality: ${resolutionKey}`);
+          console.log(`Final iframe URL being set: ${result.finalUrl}`);
         }
 
         if (result.ok) {
@@ -944,6 +950,17 @@ function WatchPageContent({ params, episodeSlug }) {
         {/* Server List (Tidak berubah) */}
         <div className="bg-neutral-900 p-4 rounded-lg mb-4">
           <h2 className="text-lg font-semibold mb-3">Pilih Server</h2>
+          
+          {/* Quality Info Box */}
+          {activeIdentifier && (
+            <div className="mb-4 p-3 bg-blue-900/30 rounded-md border border-blue-500/50">
+              <p className="text-sm text-blue-200">
+                <span className="font-bold">⚠️ Penting:</span> Kualitas video ditentukan oleh player embed. 
+                Jika player menampilkan 360p/Auto, gunakan <strong>kontrol kualitas di dalam video player</strong> untuk mengubahnya ke 720p.
+              </p>
+            </div>
+          )}
+          
           <div className='w-full h-full p-4 bg-neutral-800 rounded-lg shadow-xl'>
             <div className='mb-4 p-3 bg-neutral-700 rounded-md border border-yellow-500/50 flex items-start'>
               <p className='text-sm text-neutral-200 font-medium'>
@@ -1017,7 +1034,7 @@ function WatchPageContent({ params, episodeSlug }) {
           <div className="bg-neutral-900 p-4 rounded-lg mb-4 text-xs text-neutral-300 space-y-2">
             <div><span className="text-neutral-400">Active:</span> {activeIdentifier || '-'} </div>
             <div className="break-all"><span className="text-neutral-400">Resolved URL:</span> {lastResolvedUrl || '-'}</div>
-            <div className="break-all"><span className="text-neutral-400">Iframe URL:</span> {currentStreamUrl || '-'}</div>
+            <div className="break-all"><span className="text-neutral-400">Current Iframe URL:</span> {currentStreamUrl || '-'}</div>
             {lastServerResponse && (
               <pre className="whitespace-pre-wrap bg-neutral-800 p-3 rounded-md max-h-64 overflow-auto">
 {JSON.stringify(lastServerResponse?.data || lastServerResponse, null, 2)}
