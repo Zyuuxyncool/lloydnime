@@ -34,93 +34,52 @@ function AnimeListSkeleton() {
 // -----------------------------------------------------------------
 
 
-// --- FUNGSI HELPER BARU ---
-// Fungsi ini akan fetch dan filter data secara berulang
-// sampai jumlah 'desiredLimit' tercapai atau data habis.
-async function fetchAndFilterAnime(baseUrl, endpoint, desiredLimit = 10) {
-  const endpointCandidates = Array.isArray(endpoint) ? endpoint : [endpoint];
-  let filteredAnimes = []; // Array untuk menampung hasil
-  let currentPage = 1;
-  let hasNextPage = true;
+// --- FETCHANIME HOME ENDPOINT ---
+// Fetch dari /anime/home untuk mengambil ongoing dan completed data
+async function fetchAnimeHome(baseUrl, desiredLimit = 10) {
+  try {
+    const response = await fetch(`${baseUrl}/anime/home`, { cache: 'no-store' });
 
-  // Kita batasi 5 halaman fetch per section
-  // agar server tidak looping selamanya jika ada error
-  const maxPagesToFetch = 5; 
-
-  while (
-    filteredAnimes.length < desiredLimit && 
-    hasNextPage && 
-    currentPage <= maxPagesToFetch
-  ) {
-    try {
-      let data = null;
-
-      for (const candidate of endpointCandidates) {
-        const response = await fetch(`${baseUrl}/${candidate}?page=${currentPage}`);
-
-        if (!response.ok) {
-          if (response.status >= 500) {
-            console.error(`Gagal fetch ${candidate} page ${currentPage}: Status ${response.status}`);
-          }
-          continue;
-        }
-
-        const contentType = response.headers.get('content-type') || '';
-        if (!contentType.toLowerCase().includes('application/json')) {
-          console.error(`Respons ${candidate} bukan JSON (page ${currentPage})`);
-          continue;
-        }
-
-        data = await response.json();
-        break;
-      }
-
-      if (!data) {
-        hasNextPage = false;
-        continue;
-      }
-      const rawList = data?.data?.animeList || data?.data?.animes || data?.animeList || data?.animes || [];
-
-      const animesOnThisPage = rawList.map((anime) => {
-        // Otakudesu API v3 uses 'animeId' as the slug
-        const slug = anime?.animeId || anime?.slug || anime?.anime_id;
-
-        return {
-          ...anime,
-          slug: slug,
-          poster: anime?.poster || anime?.image || anime?.thumbnail,
-          episodes: anime?.episodes || anime?.episode || anime?.latestEpisode,
-          releaseDay: anime?.releaseDay || anime?.release_day || anime?.status_or_day || anime?.status,
-        };
-      });
-
-      // Filter anime di halaman ini dan pastikan ada slug
-      const validAnimes = animesOnThisPage.filter(anime => 
-        anime.title && anime.slug // Pastikan ada judul DAN slug
-      );
-
-      // Tambahkan hasil filter ke array utama
-      // Kita gunakan 'push' dan 'slice' di akhir agar lebih efisien
-      for (const anime of validAnimes) {
-        if (filteredAnimes.length < desiredLimit) {
-          filteredAnimes.push(anime);
-        } else {
-          break; // Hentikan jika 'desiredLimit' sudah tercapai
-        }
-      }
-
-      // Perbarui status pagination
-      hasNextPage = data?.pagination?.hasNextPage || data?.data?.pagination?.hasNextPage || false;
-      currentPage++;
-
-    } catch (error) {
-      console.error(`Error saat processing ${endpointCandidates.join(', ')} page ${currentPage}:`, error);
-      hasNextPage = false; // Hentikan loop jika ada error parsing JSON, dll.
+    if (!response.ok) {
+      console.error(`Gagal fetch /anime/home: Status ${response.status}`);
+      return null;
     }
-  }
 
-  // Kembalikan array yang sudah terisi dan terpotong
-  return filteredAnimes;
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.toLowerCase().includes('application/json')) {
+      console.error(`Respons /anime/home bukan JSON`);
+      return null;
+    }
+
+    const result = await response.json();
+    const data = result?.data || {};
+
+    // Parse ongoing anime
+    const ongoingList = (data?.ongoing?.animeList || []).map((anime) => ({
+      ...anime,
+      slug: anime?.animeId || anime?.slug || anime?.anime_id,
+      poster: anime?.poster || anime?.image || anime?.thumbnail,
+      episodes: anime?.episodes || anime?.episode || anime?.latestEpisode,
+      releaseDay: anime?.releaseDay || anime?.release_day || anime?.status_or_day || anime?.status,
+    })).filter(anime => anime.title && anime.slug).slice(0, desiredLimit);
+
+    // Parse completed anime
+    const completedList = (data?.completed?.animeList || []).map((anime) => ({
+      ...anime,
+      slug: anime?.animeId || anime?.slug || anime?.anime_id,
+      poster: anime?.poster || anime?.image || anime?.thumbnail,
+      episodes: anime?.episodes || anime?.episode || anime?.latestEpisode,
+      releaseDay: anime?.releaseDay || anime?.release_day || anime?.status_or_day || anime?.status,
+    })).filter(anime => anime.title && anime.slug).slice(0, desiredLimit);
+
+    return {
+      ongoing: ongoingList,
+      completed: completedList,
+    };
+  } catch (error) {
+    console.error("Error fetching from /anime/home:", error);
+    return null;
+  }
 }
 
 async function fetchFallbackAnime(section = 'ongoing', desiredLimit = 10) {
@@ -155,7 +114,7 @@ async function fetchFallbackAnime(section = 'ongoing', desiredLimit = 10) {
 
 // Komponen Home Anda (sudah async)
 const Home = async () => {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api-otakudesu-zeta.vercel.app/anime';
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api-otakudesu-zeta.vercel.app';
   const user = await AuthUserSession();
 
   let animeOngoing = [];
@@ -163,39 +122,29 @@ const Home = async () => {
   let ongoingFetchFailed = false;
   let completedFetchFailed = false;
 
-  // MODIFIKASI: Gunakan Promise.allSettled dengan fungsi helper baru
-  // Ini akan fetch 'ongoing' dan 'completed' secara paralel,
-  // dan masing-masing akan melakukan looping fetch internal jika diperlukan.
+  // Fetch dari /anime/home endpoint
   try {
-    const [ongoingResult, completedResult] = await Promise.allSettled([
-      fetchAndFilterAnime(apiUrl, 'ongoing-anime', 10),
-      fetchAndFilterAnime(apiUrl, 'complete-anime', 10)
-    ]);
+    const homeResult = await fetchAnimeHome(apiUrl, 10);
 
-    if (ongoingResult.status === 'fulfilled') {
-      animeOngoing = ongoingResult.value;
-      // Anggap gagal hanya jika hasil fetch = 0
-      if (animeOngoing.length === 0) ongoingFetchFailed = true; 
+    if (homeResult && homeResult.ongoing && homeResult.completed) {
+      animeOngoing = homeResult.ongoing;
+      animeComplete = homeResult.completed;
+      
+      ongoingFetchFailed = animeOngoing.length === 0;
+      completedFetchFailed = animeComplete.length === 0;
     } else {
-      console.error("Fetch ongoing gagal:", ongoingResult.reason);
+      console.error("Fetch /anime/home gagal atau mengembalikan null");
       ongoingFetchFailed = true;
-    }
-
-    if (completedResult.status === 'fulfilled') {
-      animeComplete = completedResult.value;
-      // Anggap gagal hanya jika hasil fetch = 0
-      if (animeComplete.length === 0) completedFetchFailed = true; 
-    } else {
-      console.error("Fetch completed gagal:", completedResult.reason);
       completedFetchFailed = true;
     }
     
   } catch (error) {
-    console.error("Error global saat fetch di Home:", error);
+    console.error("Error saat fetch /anime/home:", error);
     ongoingFetchFailed = true;
     completedFetchFailed = true;
   }
 
+  // Fallback ke Jikan jika gagal
   if (animeOngoing.length === 0) {
     animeOngoing = await fetchFallbackAnime('ongoing', 10);
     ongoingFetchFailed = animeOngoing.length === 0;
