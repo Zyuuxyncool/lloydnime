@@ -368,6 +368,9 @@ function WatchPageContent({ params, episodeSlug }) {
         setEpisodeTitle(episodeContent.title);
         setServers(serversList);
 
+        console.log('=== AUTO SELECT DEBUG ===');
+        console.log('Raw servers list:', serversList);
+
         // Auto pilih kualitas terbaik agar tidak selalu jatuh ke "default/auto"
         const extractResolutionText = (server) => String(
           server?.resolution ||
@@ -391,12 +394,20 @@ function WatchPageContent({ params, episodeSlug }) {
         };
 
         const rankedServers = [...serversList]
-          .map((server, idx) => ({ server, idx, score: getResolutionScore(server) }))
+          .map((server, idx) => {
+            const score = getResolutionScore(server);
+            console.log(`Server: ${server?.title}, Resolution: ${server?.resolution}, Quality: ${server?.quality}, Score: ${score}`);
+            return { server, idx, score };
+          })
           .sort((a, b) => b.score - a.score);
+        
+        console.log('Ranked servers:', rankedServers.map(r => ({ title: r.server.title, resolution: r.server.resolution, score: r.score })));
 
         const best = rankedServers[0];
         let chosenUrl = null;
         let chosenIdentifier = null;
+
+        console.log('Best selected server:', { title: best?.server?.title, resolution: best?.server?.resolution, quality: best?.server?.quality, score: best?.score });
 
         if (best?.server) {
           const rawEndpoint = normalizeUrl(
@@ -412,10 +423,12 @@ function WatchPageContent({ params, episodeSlug }) {
               try {
                 const endpointUrl = new URL(rawEndpoint);
                 const qualityText = String(best.server?.resolution || best.server?.quality || '').trim();
+                console.log(`Resolving API endpoint with quality: "${qualityText}"`);
                 if (qualityText) endpointUrl.searchParams.set('quality', qualityText);
                 endpointUrl.searchParams.set('preferDownload', '1');
                 if (episodeSlug) endpointUrl.searchParams.set('episode', episodeSlug);
 
+                console.log(`Auto-resolve API URL: ${endpointUrl.toString()}`);
                 const resolvedResponse = await fetch(endpointUrl.toString(), { cache: 'no-store' });
                 if (resolvedResponse.ok) {
                   const resolvedData = await parseJsonResponse(resolvedResponse, 'initial server resolve');
@@ -429,6 +442,7 @@ function WatchPageContent({ params, episodeSlug }) {
                   if (streamUrl) {
                     chosenUrl = normalizeUrl(streamUrl);
                     chosenIdentifier = best.server?.serverId ? `server-${best.server.serverId}` : rawEndpoint;
+                    console.log(`✅ Auto-selected ${qualityText} stream, ID: ${chosenIdentifier}`);
                   }
                 }
               } catch (err) {
@@ -690,10 +704,14 @@ function WatchPageContent({ params, episodeSlug }) {
 
     const serverTitle = String(server?.title || server?.name || `server-${fallbackIndex + 1}`);
 
-    return {
+    const meta = {
       resolution: String(resolution || '').trim(),
       host: serverTitle.trim()
     };
+    
+    console.log(`getServerMeta for "${serverTitle}": resolution="${meta.resolution}", raw server object:`, server);
+    
+    return meta;
   };
 
   const isFallbackResponse = (data) => {
