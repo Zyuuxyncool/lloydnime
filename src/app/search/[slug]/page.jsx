@@ -46,7 +46,7 @@ async function searchAnime(slug) {
     const encodedKeyword = encodeURIComponent(keyword);
     
     const endpoints = [
-      `${apiUrl}/search/${encodedKeyword}`
+      `${apiUrl}/anime/search/${encodedKeyword}`
     ];
 
     let animes = [];
