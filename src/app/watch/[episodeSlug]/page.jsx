@@ -767,10 +767,36 @@ function WatchPageContent({ params, episodeSlug }) {
 
     const initialMeta = getServerMeta(server, index);
     const resolutionKey = initialMeta.resolution;
-    const tried = new Set();
     let currentServer = server;
     let currentIndex = index;
     let lastResult = null;
+
+    const pickSameQualityNonMega = () => {
+      const targetQuality = String(resolutionKey || '').toLowerCase();
+      if (!targetQuality) return null;
+
+      const candidateIndex = servers.findIndex((item, idx) => {
+        if (idx === currentIndex) return false;
+        const itemMeta = getServerMeta(item, idx);
+        const itemQuality = String(itemMeta?.resolution || '').toLowerCase();
+        const itemTitle = String(item?.title || item?.name || '').toLowerCase();
+        return itemQuality === targetQuality && !itemTitle.includes('mega');
+      });
+
+      if (candidateIndex < 0) return null;
+      return { server: servers[candidateIndex], index: candidateIndex };
+    };
+
+    const currentTitle = String(currentServer?.title || currentServer?.name || '').toLowerCase();
+    if (currentTitle.includes('mega')) {
+      const backup = pickSameQualityNonMega();
+      if (backup) {
+        currentServer = backup.server;
+        currentIndex = backup.index;
+        const backupName = String(backup.server?.title || backup.server?.name || `Server ${backup.index + 1}`);
+        setFallbackNotice(`Server mega dialihkan ke ${backupName} (${resolutionKey}) untuk stabilitas.`);
+      }
+    }
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
@@ -789,10 +815,23 @@ function WatchPageContent({ params, episodeSlug }) {
           return;
         }
 
+        const backup = pickSameQualityNonMega();
+        if (backup) {
+          currentServer = backup.server;
+          currentIndex = backup.index;
+          continue;
+        }
+
         console.warn(`⚠️ Server failed for quality ${resolutionKey}, attempt ${attempt + 1}`);
-        break; // Don't try to find alternative - respect user's quality choice
+        break;
       } catch (err) {
         console.error("Error fetching stream:", err);
+        const backup = pickSameQualityNonMega();
+        if (backup) {
+          currentServer = backup.server;
+          currentIndex = backup.index;
+          continue;
+        }
         break;
       }
     }
