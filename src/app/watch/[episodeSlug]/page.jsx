@@ -368,9 +368,6 @@ function WatchPageContent({ params, episodeSlug }) {
         setEpisodeTitle(episodeContent.title);
         setServers(serversList);
 
-        console.log('=== AUTO SELECT DEBUG ===');
-        console.log('Raw servers list:', serversList);
-
         // Auto pilih kualitas terbaik agar tidak selalu jatuh ke "default/auto"
         const extractResolutionText = (server) => String(
           server?.resolution ||
@@ -394,20 +391,12 @@ function WatchPageContent({ params, episodeSlug }) {
         };
 
         const rankedServers = [...serversList]
-          .map((server, idx) => {
-            const score = getResolutionScore(server);
-            console.log(`Server: ${server?.title}, Resolution: ${server?.resolution}, Quality: ${server?.quality}, Score: ${score}`);
-            return { server, idx, score };
-          })
+          .map((server, idx) => ({ server, idx, score: getResolutionScore(server) }))
           .sort((a, b) => b.score - a.score);
-        
-        console.log('Ranked servers:', rankedServers.map(r => ({ title: r.server.title, resolution: r.server.resolution, score: r.score })));
 
         const best = rankedServers[0];
         let chosenUrl = null;
         let chosenIdentifier = null;
-
-        console.log('Best selected server:', { title: best?.server?.title, resolution: best?.server?.resolution, quality: best?.server?.quality, score: best?.score });
 
         if (best?.server) {
           const rawEndpoint = normalizeUrl(
@@ -423,12 +412,10 @@ function WatchPageContent({ params, episodeSlug }) {
               try {
                 const endpointUrl = new URL(rawEndpoint);
                 const qualityText = String(best.server?.resolution || best.server?.quality || '').trim();
-                console.log(`Resolving API endpoint with quality: "${qualityText}"`);
                 if (qualityText) endpointUrl.searchParams.set('quality', qualityText);
                 endpointUrl.searchParams.set('preferDownload', '1');
                 if (episodeSlug) endpointUrl.searchParams.set('episode', episodeSlug);
 
-                console.log(`Auto-resolve API URL: ${endpointUrl.toString()}`);
                 const resolvedResponse = await fetch(endpointUrl.toString(), { cache: 'no-store' });
                 if (resolvedResponse.ok) {
                   const resolvedData = await parseJsonResponse(resolvedResponse, 'initial server resolve');
@@ -442,9 +429,6 @@ function WatchPageContent({ params, episodeSlug }) {
                   if (streamUrl) {
                     chosenUrl = normalizeUrl(streamUrl);
                     chosenIdentifier = best.server?.serverId ? `server-${best.server.serverId}` : rawEndpoint;
-                    console.log(`✅ Auto-selected ${qualityText} stream, ID: ${chosenIdentifier}`);
-                    console.log(`Final embed URL returned from API: ${streamUrl}`);
-                    console.log(`Full API response:`, resolvedData);
                   }
                 }
               } catch (err) {
@@ -706,14 +690,10 @@ function WatchPageContent({ params, episodeSlug }) {
 
     const serverTitle = String(server?.title || server?.name || `server-${fallbackIndex + 1}`);
 
-    const meta = {
+    return {
       resolution: String(resolution || '').trim(),
       host: serverTitle.trim()
     };
-    
-    console.log(`getServerMeta for "${serverTitle}": resolution="${meta.resolution}", raw server object:`, server);
-    
-    return meta;
   };
 
   const isFallbackResponse = (data) => {
@@ -768,9 +748,6 @@ function WatchPageContent({ params, episodeSlug }) {
       const resolved = data?.data?.resolved ?? data?.resolved;
       const streamUrl = data?.data?.url || data?.url || data?.data?.embedUrl || data?.embedUrl;
 
-      console.log(`resolveServerStream API response for quality [${meta?.resolution}]:`, data);
-      console.log(`Extracted stream URL: ${streamUrl}, resolved status: ${resolved}`);
-
       if (resolved === false || !streamUrl) {
         return { ok: false, data, activeId };
       }
@@ -797,8 +774,6 @@ function WatchPageContent({ params, episodeSlug }) {
     let currentIndex = index;
     let lastResult = null;
 
-    console.log(`Resolving server with quality: ${resolutionKey}, title: ${server?.title}`);
-
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         const result = await resolveServerStream(currentServer, currentIndex);
@@ -809,8 +784,6 @@ function WatchPageContent({ params, episodeSlug }) {
         if (result.finalUrl) {
           setActiveIdentifier(result.activeId);
           setCurrentStreamUrl(result.finalUrl);
-          console.log(`✅ Stream loaded with quality: ${resolutionKey}`);
-          console.log(`Final iframe URL being set: ${result.finalUrl}`);
         }
 
         if (result.ok) {
@@ -950,16 +923,6 @@ function WatchPageContent({ params, episodeSlug }) {
         {/* Server List (Tidak berubah) */}
         <div className="bg-neutral-900 p-4 rounded-lg mb-4">
           <h2 className="text-lg font-semibold mb-3">Pilih Server</h2>
-          
-          {/* Quality Info Box */}
-          {activeIdentifier && (
-            <div className="mb-4 p-3 bg-blue-900/30 rounded-md border border-blue-500/50">
-              <p className="text-sm text-blue-200">
-                <span className="font-bold">⚠️ Penting:</span> Kualitas video ditentukan oleh player embed. 
-                Jika player menampilkan 360p/Auto, gunakan <strong>kontrol kualitas di dalam video player</strong> untuk mengubahnya ke 720p.
-              </p>
-            </div>
-          )}
           
           <div className='w-full h-full p-4 bg-neutral-800 rounded-lg shadow-xl'>
             <div className='mb-4 p-3 bg-neutral-700 rounded-md border border-yellow-500/50 flex items-start'>
