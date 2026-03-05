@@ -151,8 +151,8 @@ async function getDetailAnime(slug) {
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     const endpoints = [
-      `${apiUrl}/${encodeURIComponent(safeSlug)}`,
-      `${apiUrl}/${encodeURIComponent(safeSlug.toLowerCase())}`
+      `${apiUrl}/anime/anime/${encodeURIComponent(safeSlug)}`,
+      `${apiUrl}/anime/anime/${encodeURIComponent(safeSlug.toLowerCase())}`
     ];
 
     for (const endpoint of endpoints) {
@@ -534,6 +534,35 @@ export default async function DetailAnimePage({ params: paramsPromise }) {
           )}
         </div>
       </div>
+
+      {/* Bagian Recommended Anime */}
+      {anime.recommendedAnimeList && Array.isArray(anime.recommendedAnimeList) && anime.recommendedAnimeList.length > 0 && (
+        <div className="relative z-10 container mx-auto px-4 md:px-8 py-8 border-t border-neutral-700">
+          <h2 className="text-2xl font-bold mb-6">Recommended Anime</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            {anime.recommendedAnimeList.map((recAnime, index) => (
+              <Link
+                key={`${recAnime.animeId}-${index}`}
+                href={`/detail/${recAnime.animeId}`}
+                className="group relative rounded-lg overflow-hidden hover:scale-105 transition-transform duration-300"
+              >
+                <Image
+                  src={recAnime.poster || 'https://placehold.co/200x300/171717/ef4444?text=No+Image'}
+                  alt={recAnime.title}
+                  width={200}
+                  height={300}
+                  className="w-full h-auto object-cover rounded-lg"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-colors rounded-lg flex items-end p-3">
+                  <h3 className="text-sm font-semibold text-white line-clamp-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {recAnime.title}
+                  </h3>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
