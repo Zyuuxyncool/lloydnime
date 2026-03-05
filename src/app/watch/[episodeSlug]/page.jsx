@@ -154,6 +154,7 @@ function WatchPageContent({ params, episodeSlug }) {
       try {
         // --- Try episode endpoint ---
         const endpoints = [
+          `${apiUrl}/anime/episode/${episodeSlug}`,
           `${apiUrl}/episode/${episodeSlug}`
         ];
 
@@ -497,7 +498,7 @@ function WatchPageContent({ params, episodeSlug }) {
         
         if (animeSlugToFetch) {
           try {
-            const animeUrl = `${apiUrl}/anime/${animeSlugToFetch}`;
+            const animeUrl = `${apiUrl}/anime/anime/${animeSlugToFetch}`;
             console.log("Fetching from URL:", animeUrl);
             const animeResponse = await fetch(animeUrl);
             console.log("Anime response status:", animeResponse.status);
