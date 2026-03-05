@@ -337,7 +337,19 @@ function WatchPageContent({ params, episodeSlug }) {
           url: normalizeUrl(server?.url || server?.href || server?.link) || (server?.serverId ? `${apiUrl}/server/${server.serverId}` : null),
         }));
         
-        console.log("Flattened servers:", serversList);
+        // Filter out "default-stream" and servers without proper quality
+        serversList = serversList.filter((server) => {
+          const title = String(server?.title || '').toLowerCase();
+          
+          // Exclude default-stream button and default servers
+          if (title.includes('default-stream')) return false;
+          if (title === 'default server') return false;
+          
+          // Keep servers with valid URL or serverId
+          return Boolean(server?.url || server?.serverId);
+        });
+        
+        console.log("Flattened servers (filtered):", serversList);
         
         if (!serversList || serversList.length === 0) {
           console.warn("Tidak ada server yang ditemukan. Response structure:", {
@@ -693,11 +705,29 @@ function WatchPageContent({ params, episodeSlug }) {
     if (!endpoint) return endpoint;
     try {
       const url = new URL(endpoint);
-      if (meta?.resolution) url.searchParams.set('quality', meta.resolution);
-      if (meta?.host) url.searchParams.set('host', meta.host);
-      if (episodeSlug) url.searchParams.set('episode', episodeSlug);
+      
+      // Pass quality information in multiple ways for compatibility
+      if (meta?.resolution) {
+        const qualityValue = String(meta.resolution).trim();
+        if (qualityValue && qualityValue.toLowerCase() !== 'default') {
+          url.searchParams.set('quality', qualityValue);
+          url.searchParams.set('preferQuality', qualityValue);
+        }
+      }
+      
+      if (meta?.host) {
+        url.searchParams.set('host', meta.host);
+      }
+      
+      if (episodeSlug) {
+        url.searchParams.set('episode', episodeSlug);
+      }
+      
       url.searchParams.set('preferDownload', '1');
-      return url.toString();
+      
+      const finalUrl = url.toString();
+      console.log(`Built API URL for quality [${meta?.resolution}]: ${finalUrl}`);
+      return finalUrl;
     } catch {
       return endpoint;
     }
@@ -744,7 +774,9 @@ function WatchPageContent({ params, episodeSlug }) {
     let currentIndex = index;
     let lastResult = null;
 
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    console.log(`Resolving server with quality: ${resolutionKey}, title: ${server?.title}`);
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         const result = await resolveServerStream(currentServer, currentIndex);
         lastResult = result;
@@ -754,39 +786,28 @@ function WatchPageContent({ params, episodeSlug }) {
         if (result.finalUrl) {
           setActiveIdentifier(result.activeId);
           setCurrentStreamUrl(result.finalUrl);
+          console.log(`✅ Stream loaded with quality: ${resolutionKey}`);
         }
 
-        if (result.ok && !isFallbackResponse(result.data)) {
+        if (result.ok) {
           setIsSwitchingServer(false);
           return;
         }
 
-        const shouldTryAnother = Boolean(resolutionKey) && resolutionKey.toLowerCase() !== 'default';
-        if (!shouldTryAnother) break;
-
-        const serverKey = currentServer?.serverId || `idx-${currentIndex}`;
-        tried.add(serverKey);
-        const nextIndex = servers.findIndex((srv, idx) => {
-          if (idx === currentIndex) return false;
-          const key = srv?.serverId || `idx-${idx}`;
-          if (tried.has(key)) return false;
-          return getServerMeta(srv, idx).resolution === resolutionKey;
-        });
-
-        if (nextIndex === -1) break;
-
-        currentServer = servers[nextIndex];
-        currentIndex = nextIndex;
+        console.warn(`⚠️ Server failed for quality ${resolutionKey}, attempt ${attempt + 1}`);
+        break; // Don't try to find alternative - respect user's quality choice
       } catch (err) {
         console.error("Error fetching stream:", err);
         break;
       }
     }
 
-    if (lastResult?.ok && isFallbackResponse(lastResult?.data)) {
-      setFallbackNotice('Server mengembalikan kualitas default dari sumber (fallback).');
-    } else if (!lastResult?.ok) {
-      setFallbackNotice('Server tidak bisa di-resolve untuk kualitas ini.');
+    if (lastResult?.ok) {
+      setFallbackNotice(`Berhasil terhubung dengan server berkualitas ${resolutionKey}`);
+    } else if (!lastResult?.ok && lastResult?.data) {
+      setFallbackNotice(`Server berkualitas ${resolutionKey} tidak tersedia. Silakan coba server lain.`);
+    } else {
+      setFallbackNotice(`Gagal terhubung ke server. Silakan coba server lain.`);
     }
 
     setIsSwitchingServer(false);
