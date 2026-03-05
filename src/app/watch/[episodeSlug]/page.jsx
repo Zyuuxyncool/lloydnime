@@ -748,6 +748,13 @@ function WatchPageContent({ params, episodeSlug }) {
       const resolved = data?.data?.resolved ?? data?.resolved;
       const streamUrl = data?.data?.url || data?.url || data?.data?.embedUrl || data?.embedUrl;
 
+      console.log(`API response for server [${meta.host}]:`, {
+        endpoint: apiEndpoint,
+        resolved,
+        streamUrl,
+        fullData: data?.data
+      });
+
       if (resolved === false || !streamUrl) {
         return { ok: false, data, activeId };
       }
@@ -769,6 +776,7 @@ function WatchPageContent({ params, episodeSlug }) {
 
     const initialMeta = getServerMeta(server, index);
     const resolutionKey = initialMeta.resolution;
+    console.log(`handleServerClick - Selected server: ${server.title}, quality: ${resolutionKey}`);
     const tried = new Set();
     let currentServer = server;
     let currentIndex = index;
@@ -784,6 +792,8 @@ function WatchPageContent({ params, episodeSlug }) {
         if (result.finalUrl) {
           setActiveIdentifier(result.activeId);
           setCurrentStreamUrl(result.finalUrl);
+          console.log(`✅ Stream loaded with quality: ${resolutionKey}`);
+          console.log(`Final URL being embedded in iframe:`, result.finalUrl);
         }
 
         if (result.ok) {
