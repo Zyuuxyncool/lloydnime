@@ -8,7 +8,7 @@ function calculateLevel(totalMinutes) {
   // Formula simple: Level = floor(totalMinutes / 60) + 1
   // Level 1: 0-59 menit, Level 2: 60-119 menit, dst
   const level = Math.floor(totalMinutes / 60) + 1;
-  const nextLevelMinutes = level * 60; // Target untuk level berikutnya
+  const nextLevelMinutes = (level + 1) * 60; // Target untuk level berikutnya
   
   return { level, nextLevelMinutes };
 }
