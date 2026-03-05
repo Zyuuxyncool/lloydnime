@@ -9,8 +9,8 @@ export const dynamic = 'force-dynamic';
 
 async function getGenres() {
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api-otakudesu-zeta.vercel.app/anime';
-    const genreUrl = `${apiUrl}/genre`;
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api-otakudesu-zeta.vercel.app';
+    const genreUrl = `${apiUrl}/anime/genre`;
 
     const response = await fetch(genreUrl, {
       cache: 'no-store'
@@ -40,8 +40,8 @@ async function getGenres() {
 
 async function getSampleAnimeForGenre(slug) {
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api-otakudesu-zeta.vercel.app/anime';
-    const response = await fetch(`${apiUrl}/genre/${slug}?page=1`, {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api-otakudesu-zeta.vercel.app';
+    const response = await fetch(`${apiUrl}/anime/genre/${slug}?page=1`, {
       next: { revalidate: 86400 }
     });
     

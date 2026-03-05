@@ -20,7 +20,7 @@ const DAYS = [
 async function fetchSchedule() {
   try {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-    const response = await fetch(`${apiUrl}/schedule`);
+    const response = await fetch(`${apiUrl}/anime/schedule`, { cache: 'no-store' });
     if (!response.ok) {
       throw new Error('Gagal mengambil data schedule');
     }

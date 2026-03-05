@@ -10,7 +10,7 @@ async function getAnimeByGenre(slug, page = 1) {
   try {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     const urls = [
-      `${apiUrl}/genre/${slug}?page=${page}`,
+      `${apiUrl}/anime/genre/${slug}?page=${page}`,
     ];
 
     let result = null;
