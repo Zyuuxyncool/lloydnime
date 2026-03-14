@@ -15,7 +15,94 @@ function parseAnimeSlugFromHref(href = '') {
   return lastSegment.trim();
 }
 
-async function searchFallback(keyword) {
+function normalizeTitleForMatch(value = '') {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/season\s*(\d+)/gi, 's$1')
+    .replace(/\(.*?\)/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\b(sub|indo|subtitle|indonesia|tv|movie|special|ona|ova)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function scoreFallbackCandidate(item, candidate) {
+  const titles = [
+    item?.title,
+    item?.title_english,
+    item?.title_japanese,
+  ].filter(Boolean);
+
+  const candidateTitle = normalizeTitleForMatch(candidate?.title || '');
+  const candidateSlug = normalizeTitleForMatch(candidate?.animeId || candidate?.slug || '');
+  if (!candidateTitle && !candidateSlug) return 0;
+
+  let score = 0;
+  for (const title of titles) {
+    const normalizedTitle = normalizeTitleForMatch(title);
+    if (!normalizedTitle) continue;
+    if (candidateTitle === normalizedTitle || candidateSlug === normalizedTitle) score += 100;
+    if (candidateTitle.includes(normalizedTitle)) score += 25;
+    if (normalizedTitle.includes(candidateTitle)) score += 15;
+
+    for (const token of normalizedTitle.split(' ').filter(Boolean)) {
+      if (candidateTitle.includes(token)) score += 4;
+      if (candidateSlug.includes(token)) score += 3;
+    }
+  }
+
+  return score;
+}
+
+async function resolveFallbackSlug(apiUrl, item) {
+  const queries = [item?.title, item?.title_english, item?.title_japanese].filter(Boolean);
+  if (!apiUrl || queries.length === 0) return null;
+
+  const candidateMap = new Map();
+
+  for (const query of queries) {
+    try {
+      const response = await fetch(`${apiUrl}/anime/search/${encodeURIComponent(query)}`, {
+        next: { revalidate: 1800 }
+      });
+
+      if (!response.ok) continue;
+
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.toLowerCase().includes('application/json')) continue;
+
+      const result = await response.json();
+      const data = result?.data || result;
+      const rawAnimes = data?.animeList || data?.animes || result?.animes || result?.animeList || [];
+
+      for (const anime of rawAnimes) {
+        const parsedFromHref = parseAnimeSlugFromHref(anime?.href || anime?.url || anime?.otakudesuUrl || '');
+        const candidateSlug = anime?.animeId || anime?.slug || anime?.anime_id || parsedFromHref || anime?.id;
+        if (!candidateSlug) continue;
+
+        if (!candidateMap.has(candidateSlug)) {
+          candidateMap.set(candidateSlug, {
+            ...anime,
+            animeId: candidateSlug,
+          });
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  const ranked = [...candidateMap.values()]
+    .map((candidate) => ({
+      candidate,
+      score: scoreFallbackCandidate(item, candidate),
+    }))
+    .sort((left, right) => right.score - left.score);
+
+  return ranked[0]?.score >= 12 ? ranked[0].candidate : null;
+}
+
+async function searchFallback(keyword, apiUrl) {
   try {
     const response = await fetch(
       `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(keyword)}&limit=20`,
@@ -27,23 +114,23 @@ async function searchFallback(keyword) {
     const result = await response.json();
     const list = Array.isArray(result?.data) ? result.data : [];
 
-    const processed = list.map((item) => {
-      // Use MAL ID as slug for Jikan results
-      const malId = item?.mal_id;
-      const title = item?.title || item?.title_english || 'Unknown';
+    const processed = await Promise.all(
+      list.map(async (item) => {
+        const title = item?.title || item?.title_english || 'Unknown';
+        const fallbackPoster = item?.images?.webp?.large_image_url || item?.images?.jpg?.image_url;
+        const resolved = await resolveFallbackSlug(apiUrl, item);
 
-      console.log('[Jikan Fallback] Title:', title, '→ MAL ID:', malId);
+        return {
+          title: resolved?.title || title,
+          slug: resolved?.animeId || resolved?.slug || null,
+          poster: resolved?.poster || resolved?.image || resolved?.thumbnail || fallbackPoster,
+          episode: resolved?.episode || resolved?.episodes || item?.episodes || '?',
+          type: resolved?.type || item?.type || 'TV',
+        };
+      })
+    );
 
-      return {
-        title,
-        slug: malId ? `jikan-${malId}` : null, // Prefix with 'jikan-' to identify Jikan sources
-        poster: item?.images?.webp?.large_image_url || item?.images?.jpg?.image_url,
-        episode: item?.episodes || '?',
-        type: item?.type || 'TV',
-      };
-    }).filter((anime) => Boolean(anime.title && anime.poster && anime.slug));
-
-    return processed;
+    return processed.filter((anime) => Boolean(anime.title && anime.poster));
   } catch {
     return [];
   }
@@ -105,13 +192,13 @@ async function searchAnime(slug) {
     }
 
     if (animes.length === 0) {
-      animes = await searchFallback(keyword);
+      animes = await searchFallback(keyword, apiUrl);
     }
 
     return animes;
   } catch (error) {
     console.error("Error saat pencarian:", error);
-    return await searchFallback(decodeURIComponent(slug));
+    return await searchFallback(decodeURIComponent(slug), process.env.NEXT_PUBLIC_API_URL || 'https://api-otakudesu-zeta.vercel.app');
   }
 }
 

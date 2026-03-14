@@ -6,12 +6,14 @@ const AnimeCard = ({ title, image, slug, episode, statusOrDay, type, priority = 
   const detailHref = slug ? `/detail/${slug}` : '#';
   const safeImage = image || 'https://placehold.co/400x600/27272a/ffffff?text=No+Image';
   const statusText = typeof statusOrDay === 'string' ? statusOrDay.replace('✓', '').trim() : '';
+  const isDisabled = !slug;
 
   return (
     <Link
       href={detailHref}
-      aria-disabled={!slug}
-      className="group will-change-transform" // <-- TAMBAHKAN DI SINI
+      aria-disabled={isDisabled}
+      className={`group will-change-transform ${isDisabled ? 'pointer-events-none opacity-80' : ''}`}
+      tabIndex={isDisabled ? -1 : undefined}
     >
       <div className="flex flex-col h-full">
 
