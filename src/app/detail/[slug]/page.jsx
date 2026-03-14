@@ -18,6 +18,38 @@ function parseLastPathSegment(url = '') {
   }
 }
 
+function normalizeTitleForMatch(value = '') {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/season\s*(\d+)/gi, 's$1')
+    .replace(/\(.*?\)/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\b(sub|indo|subtitle|indonesia|tv|movie)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function scoreSearchCandidate(keyword, candidate) {
+  const normalizedKeyword = normalizeTitleForMatch(keyword);
+  const normalizedTitle = normalizeTitleForMatch(candidate?.title || '');
+  const normalizedId = normalizeTitleForMatch(candidate?.animeId || candidate?.slug || '');
+
+  if (!normalizedKeyword || !normalizedTitle) return 0;
+  if (normalizedTitle === normalizedKeyword || normalizedId === normalizedKeyword) return 100;
+
+  let score = 0;
+  const tokens = normalizedKeyword.split(' ').filter(Boolean);
+  for (const token of tokens) {
+    if (normalizedTitle.includes(token)) score += 3;
+    if (normalizedId.includes(token)) score += 2;
+  }
+
+  if (normalizedTitle.includes(normalizedKeyword)) score += 10;
+  if (normalizedKeyword.includes(normalizedTitle)) score += 5;
+
+  return score;
+}
+
 function normalizeDetailPayload(result) {
   const payload = result?.data || result || {};
   const detail =
@@ -97,6 +129,39 @@ async function getDetailAnimeFallback(slug) {
   }
 }
 
+async function searchOtakudesuCandidate(title) {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (!apiUrl || !title) return null;
+
+  try {
+    const encodedTitle = encodeURIComponent(title);
+    const response = await fetch(`${apiUrl}/anime/search/${encodedTitle}`, {
+      next: { revalidate: 1800 }
+    });
+
+    if (!response.ok) return null;
+
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.toLowerCase().includes('application/json')) return null;
+
+    const result = await response.json();
+    const data = result?.data || result;
+    const rawList = data?.animeList || data?.animes || result?.animeList || result?.animes || [];
+    if (!Array.isArray(rawList) || rawList.length === 0) return null;
+
+    const ranked = rawList
+      .map((item) => ({
+        item,
+        score: scoreSearchCandidate(title, item),
+      }))
+      .sort((left, right) => right.score - left.score);
+
+    return ranked[0]?.score > 0 ? ranked[0].item : null;
+  } catch {
+    return null;
+  }
+}
+
 // Fungsi Fetch Detail Anime
 async function getDetailAnime(slug) {
   try {
@@ -127,6 +192,15 @@ async function getDetailAnime(slug) {
           const item = result?.data;
           
           if (item) {
+            const otakudesuCandidate = await searchOtakudesuCandidate(
+              item.title || item.title_english || item.title_japanese || ''
+            );
+
+            if (otakudesuCandidate?.animeId || otakudesuCandidate?.slug) {
+              const resolvedSlug = otakudesuCandidate.animeId || otakudesuCandidate.slug;
+              return getDetailAnime(resolvedSlug);
+            }
+
             return {
               title: item.title || item.title_english,
               poster: item.images?.webp?.large_image_url || item.images?.jpg?.large_image_url,
