@@ -63,7 +63,7 @@ function normalizeDetailPayload(result) {
   };
 }
 
-// Fallback fetch menggunakan Jikan API
+// Fallback fetch menggunakan Jikan APII
 async function getDetailAnimeFallback(slug) {
   try {
     const searchTerm = slug.replace(/-sub-indo|-batch/gi, '').replace(/-/g, ' ');
