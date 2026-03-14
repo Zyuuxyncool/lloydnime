@@ -3,6 +3,18 @@ import SearchInput from '@/app/components/SearchInput';
 import Navigation from '@/app/components/Navigation';
 import BreadcrumbNavigation from '@/app/components/BreadcrumbNavigation';
 
+function parseAnimeSlugFromHref(href = '') {
+  const raw = String(href || '').trim();
+  if (!raw) return '';
+
+  const clean = raw.split(/[?#]/)[0];
+  const match = clean.match(/\/anime\/anime\/([^/]+)/i);
+  if (match?.[1]) return match[1].trim();
+
+  const lastSegment = clean.split('/').filter(Boolean).pop() || '';
+  return lastSegment.trim();
+}
+
 async function searchFallback(keyword) {
   try {
     const response = await fetch(
@@ -41,7 +53,7 @@ async function searchAnime(slug) {
   if (!slug) return [];
 
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api-otakudesu-zeta.vercel.app';
     const keyword = decodeURIComponent(slug);
     const encodedKeyword = encodeURIComponent(keyword);
     
@@ -74,16 +86,17 @@ async function searchAnime(slug) {
         const rawAnimes = data?.animeList || data?.animes || result?.animes || result?.animeList || [];
 
         animes = rawAnimes.map((anime) => {
-          // Otakudesu API v3 uses animeId as slug
-          const slug = anime?.animeId || anime?.slug || anime?.anime_id || anime?.id;
+          // Prefer Otakudesu slug from href/animeId to avoid fallback to jikan-* URL.
+          const parsedFromHref = parseAnimeSlugFromHref(anime?.href || anime?.url || anime?.otakudesuUrl || '');
+          const normalizedSlug = anime?.animeId || anime?.slug || anime?.anime_id || parsedFromHref || anime?.id;
           
           return {
             ...anime,
-            slug: slug,
+            slug: normalizedSlug,
             poster: anime?.poster || anime?.image || anime?.thumbnail,
             episode: anime?.episode || anime?.episodes || anime?.latestEpisode,
           };
-        });
+        }).filter((anime) => Boolean(anime?.slug));
 
         if (animes.length > 0) break;
       } catch (err) {

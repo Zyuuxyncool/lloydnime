@@ -4,6 +4,7 @@ import ResponsiveBreadcrumb from '@/app/components/ResponsiveBreadcrumb';
 import Navigation from '@/app/components/Navigation';
 import Image from 'next/image';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 
 function parseLastPathSegment(url = '') {
   const raw = String(url || '').trim();
@@ -198,7 +199,13 @@ async function getDetailAnime(slug) {
 
             if (otakudesuCandidate?.animeId || otakudesuCandidate?.slug) {
               const resolvedSlug = otakudesuCandidate.animeId || otakudesuCandidate.slug;
-              return getDetailAnime(resolvedSlug);
+              const resolvedDetail = await getDetailAnime(resolvedSlug);
+              if (resolvedDetail && typeof resolvedDetail === 'object') {
+                return {
+                  ...resolvedDetail,
+                  canonicalSlug: resolvedSlug,
+                };
+              }
             }
 
             return {
@@ -282,6 +289,11 @@ export default async function DetailAnimePage({ params: paramsPromise }) {
   const { slug } = params; // Ini adalah slug yang "bersih", cth: "one-punch-man-s3"
 
   const anime = await getDetailAnime(slug);
+
+  // Ensure fallback routes like /detail/jikan-xxxxx are canonicalized to Otakudesu slug.
+  if (anime?.canonicalSlug && anime.canonicalSlug !== slug) {
+    redirect(`/detail/${anime.canonicalSlug}`);
+  }
 
   if (!anime) {
     return (
