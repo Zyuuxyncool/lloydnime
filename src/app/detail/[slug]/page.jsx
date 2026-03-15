@@ -96,6 +96,19 @@ function normalizeDetailPayload(result) {
   };
 }
 
+function isThinDetailPayload(anime = {}) {
+  if (!anime || typeof anime !== 'object') return true;
+
+  const synopsisParagraphs = Array.isArray(anime?.synopsis?.paragraphs)
+    ? anime.synopsis.paragraphs
+    : [];
+  const genreCount = Array.isArray(anime?.genreList) ? anime.genreList.length : 0;
+  const episodeCount = Array.isArray(anime?.episodeList) ? anime.episodeList.length : 0;
+  const hasCoreMeta = Boolean(anime?.status || anime?.score || anime?.studios || anime?.producers || anime?.aired);
+
+  return !hasCoreMeta && synopsisParagraphs.length === 0 && genreCount === 0 && episodeCount === 0;
+}
+
 // Fallback fetch menggunakan Jikan APII
 async function getDetailAnimeFallback(slug) {
   try {
@@ -264,12 +277,32 @@ async function getDetailAnime(slug) {
           animeData &&
           (animeData.title || animeData.episodeList || animeData.info?.episodeList || normalized?.episodeList?.length > 0)
         ) {
-          return {
+          const mergedAnimeData = {
             ...animeData,
             episodeList: Array.isArray(animeData.episodeList) && animeData.episodeList.length > 0
               ? animeData.episodeList
               : normalized?.episodeList || [],
           };
+
+          if (isThinDetailPayload(mergedAnimeData)) {
+            const jikanFallback = await getDetailAnimeFallback(
+              mergedAnimeData?.title || safeSlug
+            );
+
+            if (jikanFallback) {
+              return {
+                ...mergedAnimeData,
+                ...jikanFallback,
+                // Keep Otakudesu identity while only enriching missing metadata.
+                title: mergedAnimeData.title || jikanFallback.title,
+                poster: mergedAnimeData.poster || jikanFallback.poster,
+                episodeList: Array.isArray(mergedAnimeData.episodeList) ? mergedAnimeData.episodeList : [],
+                batchList: mergedAnimeData.batchList || jikanFallback.batchList || [],
+              };
+            }
+          }
+
+          return mergedAnimeData;
         }
       } catch {
         continue;
