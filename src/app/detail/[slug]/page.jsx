@@ -185,7 +185,7 @@ async function getDetailAnime(slug) {
       try {
         const response = await fetch(
           `https://api.jikan.moe/v4/anime/${malId}`,
-          { next: { revalidate: 3600 } }
+          { cache: 'no-store' }
         );
 
         if (response.ok) {
@@ -240,7 +240,7 @@ async function getDetailAnime(slug) {
 
     for (const endpoint of endpoints) {
       try {
-        const response = await fetch(endpoint, { next: { revalidate: 3600 } });
+        const response = await fetch(endpoint, { cache: 'no-store' });
         
         if (!response.ok) {
           continue;
