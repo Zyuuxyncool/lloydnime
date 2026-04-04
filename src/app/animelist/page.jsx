@@ -11,6 +11,9 @@ async function getInitialAnime(letter, page) {
     try {
         const apiUrl = getOtakudesuApiUrl();
         const response = await fetch(`${apiUrl}/otakudesu/anime?page=${page}`, { 
+            cache: 'no-store'
+        }); 
+        
         if (!response.ok) {
             throw new Error(`Gagal mengambil data: ${response.status}`);
         }
