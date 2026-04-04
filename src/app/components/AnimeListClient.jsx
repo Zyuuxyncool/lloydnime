@@ -69,7 +69,7 @@ function LetterFilter({ selectedLetter, onLetterChange }) {
 async function fetchAnimePage(page, letter) {
     try {
         const apiUrl = getOtakudesuApiUrl();
-        const response = await fetch(`${apiUrl}/anime?letter=${letter}&page=${page}`);
+        const response = await fetch(`${apiUrl}/otakudesu/anime?letter=${letter}&page=${page}`);
 
         if (!response.ok) {
             throw new Error(`Gagal mengambil data: ${response.status}`);
@@ -211,7 +211,7 @@ export default function AnimeListClient({ initialData, initialLetter }) {
                     const slug = anime.slug;
                     posterInFlightRef.current.add(slug);
                     try {
-                        const response = await fetch(`${apiUrl}/anime?slug=${slug}`);
+                        const response = await fetch(`${apiUrl}/otakudesu/anime?slug=${slug}`);
                         if (!response.ok) return;
                         const result = await response.json();
                         const data = result?.data || result;

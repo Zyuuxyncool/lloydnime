@@ -12,10 +12,9 @@ import { getOtakudesuApiUrl } from '@/app/libs/otakudesu-api';
 async function getMovieAnime(page = 1) {
   try {
     const apiUrl = getOtakudesuApiUrl();
-    const response = await fetch(
-      `${apiUrl}/anime/complete-anime?page=${page}`,
-      { next: { revalidate: 300 } } // Cache data selama 5 menit
-    );
+    const response = await fetch(`${apiUrl}/otakudesu/completed?page=${page}`, {
+      next: { revalidate: 300 } // Cache data selama 5 menit
+    });
 
     if (!response.ok) {
       throw new Error("Gagal mengambil data populer");

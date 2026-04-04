@@ -155,8 +155,7 @@ function WatchPageContent({ params, episodeSlug }) {
       try {
         // --- Try episode endpoint ---
         const endpoints = [
-          `${apiUrl}/otakudesu/episode/${episodeSlug}`,
-          `${apiUrl}/episode/${episodeSlug}`
+          `${apiUrl}/otakudesu/episode/${episodeSlug}`
         ];
 
         let episodeData = null;
@@ -216,7 +215,7 @@ function WatchPageContent({ params, episodeSlug }) {
 
         if (isEmptyEpisodePayload) {
           try {
-            const forceResponse = await fetch(`${apiUrl}/episode/${episodeSlug}?forceMode=true`);
+            const forceResponse = await fetch(`${apiUrl}/otakudesu/episode/${episodeSlug}?forceMode=true`);
             if (forceResponse.ok) {
               const forcedData = await parseJsonResponse(forceResponse, 'episode API (forceMode)');
               const forcedContent = forcedData?.data || forcedData;
@@ -282,7 +281,7 @@ function WatchPageContent({ params, episodeSlug }) {
                 title: source?.title || source?.name || 'Server',
                 serverId,
                 href: source?.href,
-                url: normalizeUrl(directUrl) || (serverId ? `${apiUrl}/server/${serverId}` : null)
+                url: normalizeUrl(directUrl) || (serverId ? `${apiUrl}/otakudesu/server/${serverId}` : null)
               });
             });
           }
@@ -335,7 +334,7 @@ function WatchPageContent({ params, episodeSlug }) {
 
         serversList = serversList.map((server) => ({
           ...server,
-          url: normalizeUrl(server?.url || server?.href || server?.link) || (server?.serverId ? `${apiUrl}/server/${server.serverId}` : null),
+          url: normalizeUrl(server?.url || server?.href || server?.link) || (server?.serverId ? `${apiUrl}/otakudesu/server/${server.serverId}` : null),
         }));
         
         // Filter out "default-stream" and servers without proper quality
@@ -658,7 +657,7 @@ function WatchPageContent({ params, episodeSlug }) {
 
     if (server?.serverId) {
       const encodedId = encodeURIComponent(server.serverId);
-      return normalizeUrl(`${apiUrl}/server/${encodedId}`);
+      return normalizeUrl(`${apiUrl}/otakudesu/server/${encodedId}`);
     }
 
     return normalizeUrl(server.url || server.link || server.streamUrl || server.playUrl);
@@ -865,7 +864,7 @@ function WatchPageContent({ params, episodeSlug }) {
     const checkEpisodeExistence = async () => {
       if (prevSlug) {
         try {
-          const response = await fetch(`${apiUrl}/episode/${prevSlug}`, { method: 'HEAD' });
+          const response = await fetch(`${apiUrl}/otakudesu/episode/${prevSlug}`, { method: 'HEAD' });
           setIsValidPrev(response.ok);
         } catch (error) {
           console.error("Error checking prevSlug:", error);
@@ -876,7 +875,7 @@ function WatchPageContent({ params, episodeSlug }) {
       }
       if (nextSlug) {
         try {
-          const response = await fetch(`${apiUrl}/episode/${nextSlug}`, { method: 'HEAD' });
+          const response = await fetch(`${apiUrl}/otakudesu/episode/${nextSlug}`, { method: 'HEAD' });
           setIsValidNext(response.ok);
         } catch (error) {
           console.error("Error checking nextSlug:", error);

@@ -50,7 +50,7 @@ async function getAnimeByGenre(slug, page = 1) {
     if (animes.length === 0) {
       // Fallback: use search endpoint and filter by genreId
       try {
-        const searchResponse = await fetch(`${apiUrl}/search/${encodeURIComponent(slug)}`, {
+        const searchResponse = await fetch(`${apiUrl}/otakudesu/search/${encodeURIComponent(slug)}`, {
           cache: 'no-store'
         });
 
@@ -113,7 +113,7 @@ async function getAnimeByGenre(slug, page = 1) {
 async function getGenres() {
   try {
     const apiUrl = getOtakudesuApiUrl();
-    const response = await fetch(`${apiUrl}/genre`, {
+    const response = await fetch(`${apiUrl}/otakudesu/genre`, {
       cache: 'no-store'
     });
     

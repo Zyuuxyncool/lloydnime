@@ -4,7 +4,7 @@ export async function GET() {
   try {
     const apiUrl = getOtakudesuApiUrl();
 
-    const response = await fetch(`${apiUrl}/genre`, {
+    const response = await fetch(`${apiUrl}/otakudesu/genre`, {
       cache: 'no-store'
     });
 
