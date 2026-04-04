@@ -12,8 +12,8 @@ async function getMovieAnime(page = 1) {
   try {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     const response = await fetch(
-      `${apiUrl}/complete-anime?page=${page}`,
-      { next: { revalidate: 3600 } } // Cache data selama 1 jam
+      `${apiUrl}/anime/complete-anime?page=${page}`,
+      { next: { revalidate: 300 } } // Cache data selama 5 menit
     );
 
     if (!response.ok) {

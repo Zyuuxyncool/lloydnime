@@ -63,7 +63,7 @@ async function resolveFallbackSlug(apiUrl, item) {
   for (const query of queries) {
     try {
       const response = await fetch(`${apiUrl}/anime/search/${encodeURIComponent(query)}`, {
-        next: { revalidate: 1800 }
+        next: { revalidate: 300 }
       });
 
       if (!response.ok) continue;
@@ -106,7 +106,7 @@ async function searchFallback(keyword, apiUrl) {
   try {
     const response = await fetch(
       `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(keyword)}&limit=20`,
-      { next: { revalidate: 1800 } }
+      { next: { revalidate: 600 } }
     );
 
     if (!response.ok) return [];
@@ -116,13 +116,14 @@ async function searchFallback(keyword, apiUrl) {
 
     const processed = await Promise.all(
       list.map(async (item) => {
+        const malId = item?.mal_id;
         const title = item?.title || item?.title_english || 'Unknown';
         const fallbackPoster = item?.images?.webp?.large_image_url || item?.images?.jpg?.image_url;
         const resolved = await resolveFallbackSlug(apiUrl, item);
 
         return {
           title: resolved?.title || title,
-          slug: resolved?.animeId || resolved?.slug || null,
+          slug: resolved?.animeId || resolved?.slug || (malId ? `jikan-${malId}` : null),
           poster: resolved?.poster || resolved?.image || resolved?.thumbnail || fallbackPoster,
           episode: resolved?.episode || resolved?.episodes || item?.episodes || '?',
           type: resolved?.type || item?.type || 'TV',

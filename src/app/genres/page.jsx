@@ -42,7 +42,7 @@ async function getSampleAnimeForGenre(slug) {
   try {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api-otakudesu-zeta.vercel.app';
     const response = await fetch(`${apiUrl}/anime/genre/${slug}?page=1`, {
-      next: { revalidate: 86400 }
+      next: { revalidate: 900 }
     });
     
     if (!response.ok) {
