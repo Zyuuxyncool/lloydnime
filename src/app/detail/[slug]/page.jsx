@@ -54,14 +54,18 @@ function scoreSearchCandidate(keyword, candidate) {
 function normalizeDetailPayload(result) {
   const payload = result?.data || result || {};
   const detail =
+    payload?.details ||
     payload?.detail ||
     payload?.anime ||
+    payload?.data?.details ||
     payload?.data?.detail ||
+    result?.details ||
     result?.detail ||
     result?.anime ||
     null;
 
   const payloadEpisodeList =
+    payload?.details?.episodeList ||
     payload?.episodeList ||
     payload?.episodes ||
     payload?.listEpisode ||
