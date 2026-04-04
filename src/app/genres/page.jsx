@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 async function getGenres() {
   try {
     const apiUrl = getOtakudesuApiUrl();
-    const genreUrl = `${apiUrl}/anime/genre`;
+    const genreUrl = `${apiUrl}/otakudesu/genre`;
 
     const response = await fetch(genreUrl, {
       cache: 'no-store'
@@ -42,7 +42,7 @@ async function getGenres() {
 async function getSampleAnimeForGenre(slug) {
   try {
     const apiUrl = getOtakudesuApiUrl();
-    const response = await fetch(`${apiUrl}/anime/genre/${slug}?page=1`, {
+    const response = await fetch(`${apiUrl}/otakudesu/genre/${slug}?page=1`, {
       next: { revalidate: 900 }
     });
     

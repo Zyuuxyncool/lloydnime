@@ -11,7 +11,7 @@ async function getAnimeByGenre(slug, page = 1) {
   try {
     const apiUrl = getOtakudesuApiUrl();
     const urls = [
-      `${apiUrl}/anime/genre/${slug}?page=${page}`,
+      `${apiUrl}/otakudesu/genre/${slug}?page=${page}`,
     ];
 
     let result = null;

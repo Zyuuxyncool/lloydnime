@@ -36,19 +36,19 @@ function AnimeListSkeleton() {
 
 
 // --- FETCHANIME HOME ENDPOINT ---
-// Fetch dari /anime/home untuk mengambil ongoing dan completed data
+// Fetch dari /otakudesu/home untuk mengambil ongoing dan completed data
 async function fetchAnimeHome(baseUrl, desiredLimit = 10) {
   try {
-    const response = await fetch(`${baseUrl}/anime/home`, { cache: 'no-store' });
+    const response = await fetch(`${baseUrl}/otakudesu/home`, { cache: 'no-store' });
 
     if (!response.ok) {
-      console.error(`Gagal fetch /anime/home: Status ${response.status}`);
+      console.error(`Gagal fetch /otakudesu/home: Status ${response.status}`);
       return null;
     }
 
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.toLowerCase().includes('application/json')) {
-      console.error(`Respons /anime/home bukan JSON`);
+      console.error(`Respons /otakudesu/home bukan JSON`);
       return null;
     }
 
@@ -78,7 +78,7 @@ async function fetchAnimeHome(baseUrl, desiredLimit = 10) {
       completed: completedList,
     };
   } catch (error) {
-    console.error("Error fetching from /anime/home:", error);
+    console.error("Error fetching from /otakudesu/home:", error);
     return null;
   }
 }
@@ -123,7 +123,7 @@ const Home = async () => {
   let ongoingFetchFailed = false;
   let completedFetchFailed = false;
 
-  // Fetch dari /anime/home endpoint
+  // Fetch dari /otakudesu/home endpoint
   try {
     const homeResult = await fetchAnimeHome(apiUrl, 10);
 
@@ -134,13 +134,13 @@ const Home = async () => {
       ongoingFetchFailed = animeOngoing.length === 0;
       completedFetchFailed = animeComplete.length === 0;
     } else {
-      console.error("Fetch /anime/home gagal atau mengembalikan null");
+      console.error("Fetch /otakudesu/home gagal atau mengembalikan null");
       ongoingFetchFailed = true;
       completedFetchFailed = true;
     }
     
   } catch (error) {
-    console.error("Error saat fetch /anime/home:", error);
+    console.error("Error saat fetch /otakudesu/home:", error);
     ongoingFetchFailed = true;
     completedFetchFailed = true;
   }

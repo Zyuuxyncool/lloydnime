@@ -10,10 +10,7 @@ import { getOtakudesuApiUrl } from '@/app/libs/otakudesu-api';
 async function getInitialAnime(letter, page) {
     try {
         const apiUrl = getOtakudesuApiUrl();
-        const response = await fetch(`${apiUrl}/anime/anime?page=${page}`, { 
-            cache: 'no-store' // Data anime list sebaiknya jangan di-cache terlalu lama
-        }); 
-        
+        const response = await fetch(`${apiUrl}/otakudesu/anime?page=${page}`, { 
         if (!response.ok) {
             throw new Error(`Gagal mengambil data: ${response.status}`);
         }

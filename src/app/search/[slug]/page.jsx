@@ -63,7 +63,7 @@ async function resolveFallbackSlug(apiUrl, item) {
 
   for (const query of queries) {
     try {
-      const response = await fetch(`${apiUrl}/anime/search/${encodeURIComponent(query)}`, {
+      const response = await fetch(`${apiUrl}/otakudesu/search/${encodeURIComponent(query)}`, {
         next: { revalidate: 300 }
       });
 
@@ -147,7 +147,7 @@ async function searchAnime(slug) {
     const encodedKeyword = encodeURIComponent(keyword);
     
     const endpoints = [
-      `${apiUrl}/anime/search/${encodedKeyword}`
+      `${apiUrl}/otakudesu/search/${encodedKeyword}`
     ];
 
     let animes = [];

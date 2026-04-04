@@ -21,7 +21,7 @@ const DAYS = [
 async function fetchSchedule() {
   try {
     const apiUrl = getOtakudesuApiUrl();
-    const response = await fetch(`${apiUrl}/anime/schedule`, { cache: 'no-store' });
+    const response = await fetch(`${apiUrl}/otakudesu/schedule`, { cache: 'no-store' });
     if (!response.ok) {
       throw new Error('Gagal mengambil data schedule');
     }

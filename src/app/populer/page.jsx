@@ -10,7 +10,7 @@ const ANIME_PER_PAGE = 15;
 async function getPopularAnime(page = 1) {
   try {
     const apiUrl = getOtakudesuApiUrl();
-    const response = await fetch(`${apiUrl}/anime/home`, {
+    const response = await fetch(`${apiUrl}/otakudesu/home`, {
       next: { revalidate: 300 },
       headers: { Accept: 'application/json' },
     });

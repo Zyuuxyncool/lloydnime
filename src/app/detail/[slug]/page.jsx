@@ -149,7 +149,7 @@ async function searchOtakudesuCandidate(title) {
 
   try {
     const encodedTitle = encodeURIComponent(title);
-    const response = await fetch(`${apiUrl}/anime/search/${encodedTitle}`, {
+    const response = await fetch(`${apiUrl}/otakudesu/search/${encodedTitle}`, {
       next: { revalidate: 1800 }
     });
 
@@ -245,10 +245,10 @@ async function getDetailAnime(slug) {
 
     const apiUrl = getOtakudesuApiUrl();
     const endpoints = [
-      `${apiUrl}/anime/anime/${encodeURIComponent(safeSlug)}`,
-      `${apiUrl}/anime/anime/${encodeURIComponent(safeSlug.toLowerCase())}`,
-      `${apiUrl}/anime/anime?slug=${encodeURIComponent(safeSlug)}`,
-      `${apiUrl}/anime/anime?slug=${encodeURIComponent(safeSlug.toLowerCase())}`
+      `${apiUrl}/otakudesu/anime/${encodeURIComponent(safeSlug)}`,
+      `${apiUrl}/otakudesu/anime/${encodeURIComponent(safeSlug.toLowerCase())}`,
+      `${apiUrl}/otakudesu/anime?slug=${encodeURIComponent(safeSlug)}`,
+      `${apiUrl}/otakudesu/anime?slug=${encodeURIComponent(safeSlug.toLowerCase())}`
     ];
 
     for (const endpoint of endpoints) {
