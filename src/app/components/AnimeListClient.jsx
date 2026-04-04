@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { getOtakudesuApiUrl } from '@/app/libs/otakudesu-api';
 // Kita tidak lagi butuh ikon pencarian
 
 // Komponen Card (Tidak Berubah)
@@ -67,7 +68,7 @@ function LetterFilter({ selectedLetter, onLetterChange }) {
 // (Logika ini sudah benar, tidak perlu diubah)
 async function fetchAnimePage(page, letter) {
     try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+        const apiUrl = getOtakudesuApiUrl();
         const response = await fetch(`${apiUrl}/anime?letter=${letter}&page=${page}`);
 
         if (!response.ok) {
@@ -192,7 +193,7 @@ export default function AnimeListClient({ initialData, initialLetter }) {
     }, [loadMoreAnimes]); // 'loadMoreAnimes' sudah memiliki semua dependensi yang benar
 
     useEffect(() => {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+        const apiUrl = getOtakudesuApiUrl();
         if (!apiUrl) return;
 
         const missingPosters = animes

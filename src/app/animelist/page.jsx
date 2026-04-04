@@ -4,11 +4,12 @@ import React from 'react';
 import Navigation from '../components/Navigation';
 import AnimeListClient from '../components/AnimeListClient';
 import BreadcrumbNavigation from '../components/BreadcrumbNavigation';
+import { getOtakudesuApiUrl } from '@/app/libs/otakudesu-api';
 
 // Fungsi fetch ini hanya berjalan di server
 async function getInitialAnime(letter, page) {
     try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+        const apiUrl = getOtakudesuApiUrl();
         const response = await fetch(`${apiUrl}/anime/anime?page=${page}`, { 
             cache: 'no-store' // Data anime list sebaiknya jangan di-cache terlalu lama
         }); 

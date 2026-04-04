@@ -5,6 +5,7 @@ import Navigation from '@/app/components/Navigation';
 import ResponsiveBreadcrumb from '@/app/components/ResponsiveBreadcrumb';
 import AnimeCard from '@/app/components/AnimeCard';
 import Header from '@/app/components/Header';
+import { getOtakudesuApiUrl } from '@/app/libs/otakudesu-api';
 
 const DAYS = [
   { key: 'minggu', label: 'Minggu' },
@@ -19,7 +20,7 @@ const DAYS = [
 
 async function fetchSchedule() {
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    const apiUrl = getOtakudesuApiUrl();
     const response = await fetch(`${apiUrl}/anime/schedule`, { cache: 'no-store' });
     if (!response.ok) {
       throw new Error('Gagal mengambil data schedule');

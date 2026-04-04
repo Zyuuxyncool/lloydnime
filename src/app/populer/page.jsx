@@ -3,12 +3,13 @@ import Header from '@/app/components/Header';
 import AnimeCard from '@/app/components/AnimeCard';
 import PaginationControls from '../components/Pagination';
 import BreadcrumbNavigation from '../components/BreadcrumbNavigation';
+import { getOtakudesuApiUrl } from '@/app/libs/otakudesu-api';
 
 const ANIME_PER_PAGE = 15;
 
 async function getPopularAnime(page = 1) {
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    const apiUrl = getOtakudesuApiUrl();
     const response = await fetch(`${apiUrl}/anime/home`, {
       next: { revalidate: 300 },
       headers: { Accept: 'application/json' },

@@ -4,13 +4,14 @@ import AnimeCard from '@/app/components/AnimeCard';
 import PaginationControls from '../components/Pagination';
 import Navigation from '../components/Navigation';
 import BreadcrumbNavigation from '../components/BreadcrumbNavigation';
+import { getOtakudesuApiUrl } from '@/app/libs/otakudesu-api';
 
 // Tidak perlu lagi, karena API akan memberitahu kita
 // const ANIME_PER_PAGE = 10; 
 
 async function getMovieAnime(page = 1) {
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    const apiUrl = getOtakudesuApiUrl();
     const response = await fetch(
       `${apiUrl}/anime/complete-anime?page=${page}`,
       { next: { revalidate: 300 } } // Cache data selama 5 menit

@@ -144,7 +144,7 @@ async function getDetailAnimeFallback(slug) {
 }
 
 async function searchOtakudesuCandidate(title) {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  const apiUrl = getOtakudesuApiUrl();
   if (!apiUrl || !title) return null;
 
   try {
@@ -243,7 +243,7 @@ async function getDetailAnime(slug) {
       return null;
     }
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    const apiUrl = getOtakudesuApiUrl();
     const endpoints = [
       `${apiUrl}/anime/anime/${encodeURIComponent(safeSlug)}`,
       `${apiUrl}/anime/anime/${encodeURIComponent(safeSlug.toLowerCase())}`,

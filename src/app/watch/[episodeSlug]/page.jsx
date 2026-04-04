@@ -7,6 +7,7 @@ import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { ChevronLeftIcon, ChevronRightIcon, PlayCircleIcon } from '@heroicons/react/24/solid';
 import ResponsiveBreadcrumb from '@/app/components/ResponsiveBreadcrumb';
+import { getOtakudesuApiUrl } from '@/app/libs/otakudesu-api';
 
 
 // Komponen Skeleton (Tidak Berubah)
@@ -80,7 +81,7 @@ function WatchPageContent({ params, episodeSlug }) {
   const [showLevelUpNotif, setShowLevelUpNotif] = useState(false);
   const [newLevel, setNewLevel] = useState(null);
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  const apiUrl = getOtakudesuApiUrl();
 
   const normalizeUrl = (rawUrl) => {
     if (!rawUrl || typeof rawUrl !== 'string') return null;

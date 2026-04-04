@@ -5,10 +5,11 @@ import Header from '@/app/components/Header';
 import AnimeCard from '@/app/components/AnimeCard';
 import PaginationControls from '@/app/components/Pagination';
 import Link from 'next/link';
+import { getOtakudesuApiUrl } from '@/app/libs/otakudesu-api';
 
 async function getAnimeByGenre(slug, page = 1) {
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    const apiUrl = getOtakudesuApiUrl();
     const urls = [
       `${apiUrl}/anime/genre/${slug}?page=${page}`,
     ];
@@ -111,7 +112,7 @@ async function getAnimeByGenre(slug, page = 1) {
 
 async function getGenres() {
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    const apiUrl = getOtakudesuApiUrl();
     const response = await fetch(`${apiUrl}/genre`, {
       cache: 'no-store'
     });
