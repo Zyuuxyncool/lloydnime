@@ -5,6 +5,7 @@ import Navigation from '@/app/components/Navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { getOtakudesuApiUrl } from '@/app/libs/otakudesu-api';
 
 function parseLastPathSegment(url = '') {
   const raw = String(url || '').trim();
