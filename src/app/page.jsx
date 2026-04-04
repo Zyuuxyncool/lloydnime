@@ -7,6 +7,7 @@ import HeroSection from "@/app/components/HeroSection";
 import React from 'react';
 import Navbar from "./components/Navbar"; 
 import { AuthUserSession } from "./libs/auth-libs"; 
+import { getOtakudesuApiUrl } from './libs/otakudesu-api';
 
 function ApiWarningMessage({ sectionTitle }) {
   return (
@@ -114,7 +115,7 @@ async function fetchFallbackAnime(section = 'ongoing', desiredLimit = 10) {
 
 // Komponen Home Anda (sudah async)
 const Home = async () => {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api-otakudesu-zeta.vercel.app';
+  const apiUrl = getOtakudesuApiUrl();
   const user = await AuthUserSession();
 
   let animeOngoing = [];

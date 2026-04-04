@@ -1,10 +1,8 @@
+import { getOtakudesuApiUrl } from '@/app/libs/otakudesu-api';
+
 export async function GET() {
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-
-    if (!apiUrl) {
-      return Response.json({ genres: [], error: 'API URL not configured' }, { status: 500 });
-    }
+    const apiUrl = getOtakudesuApiUrl();
 
     const response = await fetch(`${apiUrl}/genre`, {
       cache: 'no-store'

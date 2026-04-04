@@ -2,6 +2,7 @@ import AnimeCard from '@/app/components/AnimeCard';
 import SearchInput from '@/app/components/SearchInput';
 import Navigation from '@/app/components/Navigation';
 import BreadcrumbNavigation from '@/app/components/BreadcrumbNavigation';
+import { getOtakudesuApiUrl } from '@/app/libs/otakudesu-api';
 
 function parseAnimeSlugFromHref(href = '') {
   const raw = String(href || '').trim();
@@ -141,7 +142,7 @@ async function searchAnime(slug) {
   if (!slug) return [];
 
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api-otakudesu-zeta.vercel.app';
+    const apiUrl = getOtakudesuApiUrl();
     const keyword = decodeURIComponent(slug);
     const encodedKeyword = encodeURIComponent(keyword);
     
@@ -199,7 +200,7 @@ async function searchAnime(slug) {
     return animes;
   } catch (error) {
     console.error("Error saat pencarian:", error);
-    return await searchFallback(decodeURIComponent(slug), process.env.NEXT_PUBLIC_API_URL || 'https://api-otakudesu-zeta.vercel.app');
+    return await searchFallback(decodeURIComponent(slug), getOtakudesuApiUrl());
   }
 }
 

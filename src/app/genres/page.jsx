@@ -4,12 +4,13 @@ import ResponsiveBreadcrumb from '@/app/components/ResponsiveBreadcrumb';
 import Header from '@/app/components/Header';
 import Link from 'next/link';
 import Image from 'next/image';
+import { getOtakudesuApiUrl } from '@/app/libs/otakudesu-api';
 
 export const dynamic = 'force-dynamic';
 
 async function getGenres() {
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api-otakudesu-zeta.vercel.app';
+    const apiUrl = getOtakudesuApiUrl();
     const genreUrl = `${apiUrl}/anime/genre`;
 
     const response = await fetch(genreUrl, {
@@ -40,7 +41,7 @@ async function getGenres() {
 
 async function getSampleAnimeForGenre(slug) {
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api-otakudesu-zeta.vercel.app';
+    const apiUrl = getOtakudesuApiUrl();
     const response = await fetch(`${apiUrl}/anime/genre/${slug}?page=1`, {
       next: { revalidate: 900 }
     });
