@@ -5,142 +5,41 @@ import Header from '@/app/components/Header';
 import AnimeCard from '@/app/components/AnimeCard';
 import PaginationControls from '@/app/components/Pagination';
 import Link from 'next/link';
-import { getOtakudesuApiUrl } from '@/app/libs/otakudesu-api';
+import { getAnimeByGenreSlug, getGenresWithCounts } from '@/app/libs/anime-db';
 
 async function getAnimeByGenre(slug, page = 1) {
   try {
-    const apiUrl = getOtakudesuApiUrl();
-    const urls = [
-      `${apiUrl}/otakudesu/genre/${slug}?page=${page}`,
-    ];
+    const animes = await getAnimeByGenreSlug(slug, page, 20);
 
-    let result = null;
-    let response = null;
-
-    for (const url of urls) {
-      console.log('Fetching anime for genre:', url);
-      response = await fetch(url, {
-        cache: 'no-store'
-      });
-
-      console.log('Genre anime response status:', response.status);
-      if (!response.ok) continue;
-
-      result = await response.json();
-      break;
-    }
-
-    if (!result) {
-      throw new Error('Gagal mengambil data anime');
-    }
-
-    console.log('Genre anime data structure:', Object.keys(result));
-    
-    const rawAnimes = result?.data?.animeList || result?.data?.animes || result?.animeList || result?.animes || [];
-    const animes = rawAnimes.map((anime) => {
-      return {
-        ...anime,
-        slug: anime?.animeId || anime?.slug || anime?.anime_id,
-        poster: anime?.poster || anime?.image || anime?.thumbnail,
-        episode: anime?.episode || anime?.episodes || anime?.latestEpisode,
-        status_or_day: anime?.status_or_day || anime?.status || anime?.releaseDay || anime?.release_day,
-      };
-    }).filter((anime) => Boolean(anime.slug));
-
-    if (animes.length === 0) {
-      // Fallback: use search endpoint and filter by genreId
-      try {
-        const searchResponse = await fetch(`${apiUrl}/otakudesu/search/${encodeURIComponent(slug)}`, {
-          cache: 'no-store'
-        });
-
-        if (searchResponse.ok) {
-          const searchResult = await searchResponse.json();
-          const searchList =
-            searchResult?.data?.animeList ||
-            searchResult?.data?.animes ||
-            searchResult?.animeList ||
-            searchResult?.animes ||
-            [];
-
-          const filtered = searchList
-            .filter((anime) => Array.isArray(anime?.genreList) && anime.genreList.some((g) => g?.genreId === slug))
-            .map((anime) => ({
-              ...anime,
-              slug: anime?.animeId || anime?.slug || anime?.anime_id,
-              poster: anime?.poster || anime?.image || anime?.thumbnail,
-              episode: anime?.episode || anime?.episodes || anime?.latestEpisode,
-              status_or_day: anime?.status_or_day || anime?.status || anime?.releaseDay || anime?.release_day,
-            }))
-            .filter((anime) => Boolean(anime.slug));
-
-          if (filtered.length > 0) {
-            return {
-              animes: filtered,
-              pagination: {
-                hasNext: false,
-                hasPrev: false,
-                currentPage: 1,
-                totalPages: 1
-              }
-            };
-          }
-        }
-      } catch (fallbackError) {
-        console.error('Error fetching genre fallback:', fallbackError);
-      }
-    }
-
-    const pagination = result?.pagination || result?.data?.pagination || { hasNextPage: false, hasPrevPage: false };
-    
-    console.log(`Found ${animes.length} animes for genre ${slug}`);
-    
     return {
       animes: animes,
       pagination: {
-        hasNext: pagination.hasNextPage || false,
-        hasPrev: pagination.hasPrevPage || false,
-        currentPage: pagination.currentPage || page,
-        totalPages: pagination.totalPages || 1
+        hasNext: false,
+        hasPrev: page > 1,
+        currentPage: page,
+        totalPages: 1
       }
     };
   } catch (error) {
-    console.error("Error fetching anime by genre:", error);
+    console.error("Error fetching anime by genre from database:", error);
     return { animes: [], pagination: { hasNext: false, hasPrev: false } };
   }
 }
 
 async function getGenres() {
   try {
-    const apiUrl = getOtakudesuApiUrl();
-    const response = await fetch(`${apiUrl}/otakudesu/genre`, {
-      cache: 'no-store'
-    });
-    
-    if (!response.ok) {
-      return [];
-    }
-    
-    const result = await response.json();
-    
-    const data = result?.data || result;
-    const genres = data?.genreList || data?.genres || result?.genres || [];
-    
-    // Map to the format expected by the UI
-    return genres.map(genre => ({
-      slug: genre.genreId || genre.slug || genre.genre || genre.name,
-      name: genre.title || genre.name || genre.genreId
-    }));
+    return await getGenresWithCounts();
   } catch (error) {
-    console.error('Error fetching genres:', error);
+    console.error('Error fetching genres from database:', error);
     return [];
   }
 }
 
-export default async function GenrePage({ params: paramsPromise, searchParams }) {
+export default async function GenrePage({ params: paramsPromise, searchParams: searchParamsPromise }) {
   const params = await paramsPromise;
+  const searchParams = await searchParamsPromise;
   const { slug } = params;
-  const currentPage = parseInt(searchParams.page) || 1;
+  const currentPage = parseInt(searchParams?.page) || 1;
 
   const [result, allGenres] = await Promise.all([
     getAnimeByGenre(slug, currentPage),

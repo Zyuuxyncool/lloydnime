@@ -7,7 +7,9 @@ import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { ChevronLeftIcon, ChevronRightIcon, PlayCircleIcon } from '@heroicons/react/24/solid';
 import ResponsiveBreadcrumb from '@/app/components/ResponsiveBreadcrumb';
-import { getOtakudesuApiUrl } from '@/app/libs/otakudesu-api';
+// Data episode sudah disediakan oleh server wrapper.
+
+const otakudesuFetch = (...args) => fetch(...args);
 
 
 // Komponen Skeleton (Tidak Berubah)
@@ -53,7 +55,7 @@ function ErrorDisplay({ message }) {
 }
 
 // 2. Buat Komponen Konten terpisah untuk menggunakan useSearchParams
-function WatchPageContent({ params, episodeSlug }) {
+function WatchPageContent({ episodeSlug }) {
   const { data: session, status: sessionStatus } = useSession();
   const searchParams = useSearchParams();
   const isDebug = searchParams?.get('debug') === '1';
@@ -81,7 +83,7 @@ function WatchPageContent({ params, episodeSlug }) {
   const [showLevelUpNotif, setShowLevelUpNotif] = useState(false);
   const [newLevel, setNewLevel] = useState(null);
 
-  const apiUrl = getOtakudesuApiUrl();
+  const apiUrl = '';
 
   const normalizeUrl = (rawUrl) => {
     if (!rawUrl || typeof rawUrl !== 'string') return null;
@@ -164,7 +166,7 @@ function WatchPageContent({ params, episodeSlug }) {
         for (const endpoint of endpoints) {
           try {
             console.log(`Trying episode from: ${endpoint}`);
-            const episodeResponse = await fetch(endpoint);
+            const episodeResponse = await otakudesuFetch(endpoint);
             
             if (!episodeResponse.ok) {
               if (episodeResponse.status >= 500) {
@@ -206,7 +208,7 @@ function WatchPageContent({ params, episodeSlug }) {
         console.log("Episode Data:", episodeData);
 
         // Sesuaikan dengan struktur response
-        let episodeContent = episodeData.data || episodeData;
+        let episodeContent = episodeData?.data || episodeData;
 
         const isEmptyEpisodePayload =
           (!episodeContent?.title || episodeContent?.title === '') &&
@@ -215,7 +217,7 @@ function WatchPageContent({ params, episodeSlug }) {
 
         if (isEmptyEpisodePayload) {
           try {
-            const forceResponse = await fetch(`${apiUrl}/otakudesu/episode/${episodeSlug}?forceMode=true`);
+            const forceResponse = await otakudesuFetch(`${apiUrl}/otakudesu/episode/${episodeSlug}?forceMode=true`);
             if (forceResponse.ok) {
               const forcedData = await parseJsonResponse(forceResponse, 'episode API (forceMode)');
               const forcedContent = forcedData?.data || forcedData;
@@ -415,7 +417,7 @@ function WatchPageContent({ params, episodeSlug }) {
                 if (qualityText) endpointUrl.searchParams.set('quality', qualityText);
                 if (episodeSlug) endpointUrl.searchParams.set('episode', episodeSlug);
 
-                const resolvedResponse = await fetch(endpointUrl.toString(), { cache: 'no-store' });
+                const resolvedResponse = await otakudesuFetch(endpointUrl.toString(), { cache: 'no-store' });
                 if (resolvedResponse.ok) {
                   const resolvedData = await parseJsonResponse(resolvedResponse, 'initial server resolve');
                   const streamUrl =
@@ -511,17 +513,20 @@ function WatchPageContent({ params, episodeSlug }) {
           try {
             const animeUrl = `${apiUrl}/otakudesu/anime/${animeSlugToFetch}`;
             console.log("Fetching from URL:", animeUrl);
-            const animeResponse = await fetch(animeUrl);
+            const animeResponse = await otakudesuFetch(animeUrl);
             console.log("Anime response status:", animeResponse.status);
             
             if (animeResponse.ok) {
               const animeData = await parseJsonResponse(animeResponse, 'anime detail API');
               console.log("Anime response data received");
               
-              const animeDetail = animeData.data || animeData.detail || animeData;
+              const animeDetail = animeData?.data?.detail || animeData?.data || animeData?.detail || animeData;
               console.log("Anime detail extracted");
               
-              const episodes = animeDetail.episodeList || animeDetail.episodes || [];
+              const detailPayload = extractDetailPayload(animeData);
+              const episodes = detailPayload.episodeList.length > 0
+                ? detailPayload.episodeList
+                : (animeDetail.episodeList || animeDetail.episodes || []);
               console.log("Episodes found:", episodes.length);
               console.log("Episodes sample:", episodes.slice(0, 3));
               
@@ -738,13 +743,13 @@ function WatchPageContent({ params, episodeSlug }) {
     if (serverEndpoint && isApiServerEndpoint(serverEndpoint)) {
       const meta = getServerMeta(server, index);
       const apiEndpoint = buildServerApiUrl(serverEndpoint, meta);
-      const res = await fetch(apiEndpoint, { cache: 'no-store' });
+      const res = await otakudesuFetch(apiEndpoint, { cache: 'no-store' });
       if (!res.ok) {
         throw new Error(`Server API status ${res.status}`);
       }
       const data = await parseJsonResponse(res, 'server API');
       const resolved = data?.data?.resolved ?? data?.resolved;
-      const streamUrl = data?.data?.url || data?.url || data?.data?.embedUrl || data?.embedUrl;
+      const streamUrl = extractStreamUrl(data);
 
       if (resolved === false || !streamUrl) {
         return { ok: false, data, activeId };
@@ -864,7 +869,7 @@ function WatchPageContent({ params, episodeSlug }) {
     const checkEpisodeExistence = async () => {
       if (prevSlug) {
         try {
-          const response = await fetch(`${apiUrl}/otakudesu/episode/${prevSlug}`, { method: 'HEAD' });
+          const response = await otakudesuFetch(`${apiUrl}/otakudesu/episode/${prevSlug}`, { method: 'HEAD' });
           setIsValidPrev(response.ok);
         } catch (error) {
           console.error("Error checking prevSlug:", error);
@@ -875,7 +880,7 @@ function WatchPageContent({ params, episodeSlug }) {
       }
       if (nextSlug) {
         try {
-          const response = await fetch(`${apiUrl}/otakudesu/episode/${nextSlug}`, { method: 'HEAD' });
+          const response = await otakudesuFetch(`${apiUrl}/otakudesu/episode/${nextSlug}`, { method: 'HEAD' });
           setIsValidNext(response.ok);
         } catch (error) {
           console.error("Error checking nextSlug:", error);
@@ -1075,7 +1080,7 @@ function WatchPageContent({ params, episodeSlug }) {
               <div className="bg-neutral-800 p-4 rounded-lg max-h-96 overflow-y-auto">
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
                   {episodeList.map((ep, index) => {
-                    const epId = ep.episodeId || ep.slug || ep.id;
+                    const epId = ep.watchSlug || ep.episodeId || ep.slug || ep.id;
                     const epNum = ep.eps || (index + 1);
                     const isCurrentEpisode = epId === episodeSlug;
                     
@@ -1145,7 +1150,7 @@ export default function WatchPage({ params }) {
 
   return (
     <React.Suspense fallback={<WatchPageSkeleton />}>
-      <WatchPageContent params={params} episodeSlug={episodeSlug} />
+      <WatchPageContent episodeSlug={episodeSlug} />
     </React.Suspense>
   );
 }

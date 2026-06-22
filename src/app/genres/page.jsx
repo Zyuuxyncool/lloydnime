@@ -4,71 +4,21 @@ import ResponsiveBreadcrumb from '@/app/components/ResponsiveBreadcrumb';
 import Header from '@/app/components/Header';
 import Link from 'next/link';
 import Image from 'next/image';
-import { getOtakudesuApiUrl } from '@/app/libs/otakudesu-api';
+import { getGenresWithCounts } from '@/app/libs/anime-db';
 
 export const dynamic = 'force-dynamic';
 
 async function getGenres() {
   try {
-    const apiUrl = getOtakudesuApiUrl();
-    const genreUrl = `${apiUrl}/otakudesu/genre`;
-
-    const response = await fetch(genreUrl, {
-      cache: 'no-store'
-    });
-
-    if (!response.ok) {
-      return [];
-    }
-
-    const result = await response.json();
-
-    const data = result?.data || result;
-    const genres = data?.genreList || data?.genres || result?.genres || [];
-    
-    // Map to the format expected by the UI (with slug and name)
-    const mappedGenres = genres.map(genre => ({
-      slug: genre.genreId || genre.slug || genre.genre || genre.name,
-      name: genre.title || genre.name || genre.genreId
-    }));
-
-    return mappedGenres;
+    return await getGenresWithCounts();
   } catch (error) {
-    console.error("Error fetching genres:", error);
+    console.error("Error fetching genres from database:", error);
     return [];
   }
 }
 
-async function getSampleAnimeForGenre(slug) {
-  try {
-    const apiUrl = getOtakudesuApiUrl();
-    const response = await fetch(`${apiUrl}/otakudesu/genre/${slug}?page=1`, {
-      next: { revalidate: 900 }
-    });
-    
-    if (!response.ok) {
-      return null;
-    }
-    
-    const result = await response.json();
-    const data = result?.data || result;
-    const animeList = data?.animeList || data?.animes || result?.animeList || result?.animes || [];
-    return animeList?.[0]?.poster || animeList?.[0]?.image || animeList?.[0]?.thumbnail || null;
-  } catch (error) {
-    return null;
-  }
-}
-
 export default async function GenresPage() {
-  const genres = await getGenres();
-
-  // Fetch sample images for all genres
-  const allGenres = await Promise.all(
-    genres.map(async (genre) => {
-      const image = await getSampleAnimeForGenre(genre.slug);
-      return { ...genre, image };
-    })
-  );
+  const allGenres = await getGenres();
 
   const breadcrumbs = [
     { title: 'Genres', href: '/genres' }

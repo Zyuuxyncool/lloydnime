@@ -1,20 +1,8 @@
-import { getOtakudesuApiUrl } from '@/app/libs/otakudesu-api';
+import { getGenresWithCounts } from '@/app/libs/anime-db';
 
 export async function GET() {
   try {
-    const apiUrl = getOtakudesuApiUrl();
-
-    const response = await fetch(`${apiUrl}/otakudesu/genre`, {
-      cache: 'no-store'
-    });
-
-    if (!response.ok) {
-      return Response.json({ genres: [], error: `API returned ${response.status}` }, { status: 200 });
-    }
-
-    const result = await response.json();
-    const data = result?.data || result;
-    const genres = data?.genreList || data?.genres || result?.genres || [];
+    const genres = await getGenresWithCounts();
 
     return Response.json({
       genres,

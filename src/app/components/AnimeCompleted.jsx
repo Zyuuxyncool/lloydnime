@@ -13,7 +13,7 @@ const AnimeCompleted = ({ api }) => {
           slug={anime.animeId || anime.slug}
           episode={anime.episodes}
           type={anime.type}
-          statusOrDay={anime.releaseDay}
+          statusOrDay={anime.releaseDay || anime.release_day || anime.status_or_day}
           priority={index < 6}
         />
       ))}

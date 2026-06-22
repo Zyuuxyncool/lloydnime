@@ -2,49 +2,15 @@ import React from 'react';
 import Header from '@/app/components/Header';
 import AnimeCard from '@/app/components/AnimeCard';
 import PaginationControls from '../components/Pagination';
-import Navigation from '../components/Navigation';
 import BreadcrumbNavigation from '../components/BreadcrumbNavigation';
-import { getOtakudesuApiUrl } from '@/app/libs/otakudesu-api';
-
-// Tidak perlu lagi, karena API akan memberitahu kita
-// const ANIME_PER_PAGE = 10; 
+import { getAnimeByStatus } from '@/app/libs/anime-db';
 
 async function getMovieAnime(page = 1) {
   try {
-    const apiUrl = getOtakudesuApiUrl();
-    const response = await fetch(`${apiUrl}/otakudesu/completed?page=${page}`, {
-      next: { revalidate: 300 } // Cache data selama 5 menit
-    });
-
-    if (!response.ok) {
-      throw new Error("Gagal mengambil data populer");
-    }
-
-    const result = await response.json();
-    const data = result?.data || result;
-
-    const rawAnimes = data?.animeList || data?.animes || result?.animeList || result?.animes || [];
-    const animes = rawAnimes.map((anime) => ({
-      ...anime,
-      slug: anime?.slug || anime?.animeId || anime?.anime_id,
-      poster: anime?.poster || anime?.image || anime?.thumbnail,
-      episode: anime?.episode || anime?.episodes || anime?.latestEpisode,
-    }));
-
-    const pagination = result?.pagination || data?.pagination || {};
-
-    return {
-      animes,
-      pagination: {
-        hasNext: pagination?.hasNextPage || pagination?.hasNext || false,
-        hasPrev: pagination?.hasPrevPage || pagination?.hasPrev || page > 1,
-        currentPage: pagination?.currentPage || page,
-        totalPages: pagination?.totalPages || page + (animes.length > 0 ? 1 : 0)
-      }
-    };
+    return await getAnimeByStatus('Completed', page, 20);
   
   } catch (error) {
-    console.error("Error fetching popular anime:", error);
+    console.error("Error fetching completed anime from database:", error);
     // Kembalikan objek default jika error agar halaman tidak crash
     return { animes: [], pagination: { hasNext: false, hasPrev: false, totalPages: 1 } }; 
   }
@@ -53,16 +19,17 @@ async function getMovieAnime(page = 1) {
 /**
  * Halaman Populer (Server Component)
  */
-export default async function MoviePage({ searchParams }) {
+export default async function MoviePage({ searchParams: searchParamsPromise }) {
+  const searchParams = await searchParamsPromise;
 
-  const currentPage = parseInt(searchParams.page) || 1;
+  const currentPage = parseInt(searchParams?.page) || 1;
 
   // MODIFIKASI 2: Panggil API dan dapatkan seluruh objek 'result'
   const result = await getMovieAnime(currentPage);
   
   // MODIFIKASI 3: Ekstrak data dari 'result'
   const movieAnime = result.animes || [];
-  const hasNextPage = result.pagination?.hasNext || false; // <-- Ini cara yang benar
+  const hasNextPage = result.pagination?.hasNext || false;
 
   const breadcrumbs = [
     { title: 'Movie', href: '/movie' }

@@ -3,52 +3,15 @@ import Header from '@/app/components/Header';
 import AnimeCard from '@/app/components/AnimeCard';
 import PaginationControls from '../components/Pagination';
 import BreadcrumbNavigation from '../components/BreadcrumbNavigation';
-import { getOtakudesuApiUrl } from '@/app/libs/otakudesu-api';
+import { getPopularAnimePage } from '@/app/libs/anime-db';
 
 const ANIME_PER_PAGE = 15;
 
 async function getPopularAnime(page = 1) {
   try {
-    const apiUrl = getOtakudesuApiUrl();
-    const response = await fetch(`${apiUrl}/otakudesu/home`, {
-      next: { revalidate: 300 },
-      headers: { Accept: 'application/json' },
-    });
-
-    if (!response.ok) {
-      throw new Error(`API popular gagal: ${response.status}`);
-    }
-
-    const result = await response.json();
-    const data = result?.data || result;
-    const rawAnimes = data?.animeList || data?.animes || result?.animeList || result?.animes || [];
-    const paginationRaw = result?.pagination || data?.pagination || {};
-
-    const normalizedAnimes = rawAnimes
-      .map((anime) => {
-        return {
-          ...anime,
-          slug: anime?.animeId || anime?.slug || anime?.anime_id,
-          poster: anime?.poster || anime?.image || anime?.thumbnail,
-          episode: anime?.episode || anime?.episodes || anime?.latestEpisode || anime?.latest_episode,
-          status_or_day: anime?.status_or_day || anime?.status || anime?.releaseDay || anime?.release_day,
-        };
-      })
-      .filter((anime) => Boolean(anime.slug));
-
-    const pagination = {
-      hasNextPage: paginationRaw?.hasNextPage ?? (normalizedAnimes.length === ANIME_PER_PAGE),
-      hasPrevPage: paginationRaw?.hasPrevPage ?? page > 1,
-      currentPage: paginationRaw?.currentPage || page,
-      totalPages: paginationRaw?.totalPages || page + (normalizedAnimes.length === ANIME_PER_PAGE ? 1 : 0),
-    };
-    
-    return {
-      animes: normalizedAnimes,
-      pagination: pagination
-    };
+    return await getPopularAnimePage(page, ANIME_PER_PAGE);
   } catch (error) {
-    console.error("❌ Error fetching popular anime:", error);
+    console.error("❌ Error fetching popular anime from database:", error);
     return { animes: [], pagination: { hasNextPage: false, hasPrevPage: false, errorMessage: error.message || 'Gagal mengambil data anime populer' } };
   }
 }
@@ -57,10 +20,11 @@ async function getPopularAnime(page = 1) {
  * Halaman Populer (Server Component)
  * searchParams akan otomatis diisi oleh Next.js (cth: { page: '1' })
  */
-export default async function PopulerPage({ searchParams }) {
+export default async function PopulerPage({ searchParams: searchParamsPromise }) {
+  const searchParams = await searchParamsPromise;
 
   // Ambil nomor halaman dari URL, default ke 1 jika tidak ada
-  const currentPage = parseInt(searchParams.page) || 1;
+  const currentPage = parseInt(searchParams?.page) || 1;
 
   // Panggil API untuk mendapatkan data halaman saat ini
   const { animes: popularAnime, pagination } = await getPopularAnime(currentPage);

@@ -4,40 +4,16 @@ import React from 'react';
 import Navigation from '../components/Navigation';
 import AnimeListClient from '../components/AnimeListClient';
 import BreadcrumbNavigation from '../components/BreadcrumbNavigation';
-import { getOtakudesuApiUrl } from '@/app/libs/otakudesu-api';
+import { getAllAnimeList } from '@/app/libs/anime-db';
 
 // Fungsi fetch ini hanya berjalan di server
-async function getInitialAnime(letter, page) {
+async function getInitialAnime(letter) {
     try {
-        const apiUrl = getOtakudesuApiUrl();
-        const response = await fetch(`${apiUrl}/otakudesu/anime?page=${page}`, { 
-            cache: 'no-store'
-        }); 
-        
-        if (!response.ok) {
-            throw new Error(`Gagal mengambil data: ${response.status}`);
-        }
-        
-                const result = await response.json();
-                const data = result?.data || result;
-                const groupedList = Array.isArray(data?.list) ? data.list : null;
-
-                let list = [];
-                if (groupedList) {
-                    const group = groupedList.find((item) => String(item?.startWith || '').toUpperCase() === String(letter).toUpperCase());
-                    list = group?.animeList || [];
-                } else {
-                    list = data?.animeList || data?.animes || result?.animeList || result?.animes || [];
-                }
-
-                return list.map((anime) => ({
-                    ...anime,
-                    slug: anime?.animeId || anime?.slug || anime?.anime_id,
-                    poster: anime?.poster || anime?.image || anime?.thumbnail || 'https://placehold.co/400x600/171717/ef4444?text=No+Image',
-                }));
+        const list = await getAllAnimeList();
+        return list.filter((anime) => String(anime?.title || '').trim().toUpperCase().startsWith(String(letter || 'A').toUpperCase()));
         
     } catch (error) {
-        console.error("Gagal mengambil data anime:", error);
+        console.error("Gagal mengambil data anime dari database:", error);
         return []; // Kembalikan array kosong jika gagal
     }
 }
@@ -47,7 +23,7 @@ const Page = async () => {
     
     // Kita akan mengambil data awal (halaman 1) di sini
     const initialLetter = 'A';
-    const initialAnimeData = await getInitialAnime(initialLetter, 1); 
+    const initialAnimeData = await getInitialAnime(initialLetter); 
     
     const breadcrumbs = [
         { title: 'Anime List', href: '/animelist' }

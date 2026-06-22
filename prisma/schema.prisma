@@ -1,10 +1,8 @@
 // File: prisma/schema.prisma
 
 // 1. Tentukan provider database Anda
-// Gunakan "postgresql" jika Anda memakai Neon/Supabase
-// Gunakan "mysql" jika Anda memakai PlanetScale
 datasource db {
-  provider     = "postgresql" // atau "postgresql"
+  provider     = "mysql"
   url          = env("DATABASE_URL")
   relationMode = "prisma"
 }

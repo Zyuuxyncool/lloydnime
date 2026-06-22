@@ -7,7 +7,7 @@ import HeroSection from "@/app/components/HeroSection";
 import React from 'react';
 import Navbar from "./components/Navbar"; 
 import { AuthUserSession } from "./libs/auth-libs"; 
-import { getOtakudesuApiUrl } from './libs/otakudesu-api';
+import { getHomeAnimeSections } from './libs/anime-db';
 
 function ApiWarningMessage({ sectionTitle }) {
   return (
@@ -35,97 +35,34 @@ function AnimeListSkeleton() {
 // -----------------------------------------------------------------
 
 
-// --- FETCHANIME HOME ENDPOINT ---
-// Fetch dari /otakudesu/home untuk mengambil ongoing dan completed data
-async function fetchAnimeHome(baseUrl, desiredLimit = 10) {
+async function fetchAnimeHome(desiredLimit = 10) {
   try {
-    const response = await fetch(`${baseUrl}/otakudesu/home`, { cache: 'no-store' });
-
-    if (!response.ok) {
-      console.error(`Gagal fetch /otakudesu/home: Status ${response.status}`);
-      return null;
-    }
-
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.toLowerCase().includes('application/json')) {
-      console.error(`Respons /otakudesu/home bukan JSON`);
-      return null;
-    }
-
-    const result = await response.json();
-    const data = result?.data || {};
-
-    // Parse ongoing anime
-    const ongoingList = (data?.ongoing?.animeList || []).map((anime) => ({
-      ...anime,
-      slug: anime?.animeId || anime?.slug || anime?.anime_id,
-      poster: anime?.poster || anime?.image || anime?.thumbnail,
-      episodes: anime?.episodes || anime?.episode || anime?.latestEpisode,
-      releaseDay: anime?.releaseDay || anime?.release_day || anime?.status_or_day || anime?.status,
-    })).filter(anime => anime.title && anime.slug).slice(0, desiredLimit);
-
-    // Parse completed anime
-    const completedList = (data?.completed?.animeList || []).map((anime) => ({
-      ...anime,
-      slug: anime?.animeId || anime?.slug || anime?.anime_id,
-      poster: anime?.poster || anime?.image || anime?.thumbnail,
-      episodes: anime?.episodes || anime?.episode || anime?.latestEpisode,
-      releaseDay: anime?.releaseDay || anime?.release_day || anime?.status_or_day || anime?.status,
-    })).filter(anime => anime.title && anime.slug).slice(0, desiredLimit);
-
-    return {
-      ongoing: ongoingList,
-      completed: completedList,
-    };
+    return await getHomeAnimeSections(desiredLimit);
   } catch (error) {
-    console.error("Error fetching from /otakudesu/home:", error);
+    console.error("Error fetching home anime from database:", error);
     return null;
   }
 }
 
-async function fetchFallbackAnime(section = 'ongoing', desiredLimit = 10) {
-  try {
-    const fallbackUrl = section === 'ongoing'
-      ? 'https://api.jikan.moe/v4/seasons/now?limit=25'
-      : 'https://api.jikan.moe/v4/top/anime?limit=25';
-
-    const response = await fetch(fallbackUrl, {
-      next: { revalidate: 1800 }
-    });
-
-    if (!response.ok) return [];
-
-    const result = await response.json();
-    const list = Array.isArray(result?.data) ? result.data : [];
-
-    return list.slice(0, desiredLimit).map((item) => ({
-      title: item?.title || item?.title_english || 'Unknown Title',
-      slug: null,
-      poster: item?.images?.webp?.large_image_url || item?.images?.jpg?.large_image_url || item?.images?.jpg?.image_url,
-      episodes: item?.episodes || '?',
-      releaseDay: section === 'ongoing' ? 'Ongoing' : 'Popular',
-      type: item?.type || 'TV',
-    })).filter((anime) => Boolean(anime.title && anime.poster));
-  } catch {
-    return [];
-  }
-}
-// --- AKHIR FUNGSI HELPER BARU ---
-
 
 // Komponen Home Anda (sudah async)
 const Home = async () => {
-  const apiUrl = getOtakudesuApiUrl();
   const user = await AuthUserSession();
+  const todayLabel = new Intl.DateTimeFormat('id-ID', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'Asia/Jakarta',
+  }).format(new Date());
 
   let animeOngoing = [];
   let animeComplete = [];
   let ongoingFetchFailed = false;
   let completedFetchFailed = false;
 
-  // Fetch dari /otakudesu/home endpoint
   try {
-    const homeResult = await fetchAnimeHome(apiUrl, 10);
+    const homeResult = await fetchAnimeHome(10);
 
     if (homeResult && homeResult.ongoing && homeResult.completed) {
       animeOngoing = homeResult.ongoing;
@@ -145,25 +82,15 @@ const Home = async () => {
     completedFetchFailed = true;
   }
 
-  // Fallback ke Jikan jika gagal
-  if (animeOngoing.length === 0) {
-    animeOngoing = await fetchFallbackAnime('ongoing', 10);
-    ongoingFetchFailed = animeOngoing.length === 0;
-  }
 
-  if (animeComplete.length === 0) {
-    animeComplete = await fetchFallbackAnime('complete', 10);
-    completedFetchFailed = animeComplete.length === 0;
-  }
-  // -----------------------------------------------------------------
-
-
-  // 4. Render halaman. 
   return (
     <>
       <Navbar user={user} />
       <HeroSection />
 
+      <div className="mx-4 md:mx-24 mt-8 mb-2 text-sm md:text-base text-neutral-400">
+        Hari ini, {todayLabel}
+      </div>
       <Header title="Anime OnGoing" />
       {/* Jika fetch 0 item (walau sukses), tampilkan warning.
         Jika fetch gagal (error), tampilkan warning.

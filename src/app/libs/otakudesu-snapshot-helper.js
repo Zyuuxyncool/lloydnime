@@ -1,101 +1,108 @@
 /**
- * Helper untuk fetch data dari GitHub snapshots atau fallback ke live API
- * Prioritas:
- * 1. GitHub Raw snapshots (5 menit fresh)
- * 2. Fallback ke live API kalau GitHub fails
+ * Otakudesu Snapshot Helper
+ * Fetches data from GitHub snapshots or falls back to live API
  */
 
-const GITHUB_REPO = 'Zyuuxyncool/lloydnime';
-const GITHUB_BRANCH = 'main';
-const SNAPSHOTS_BASE = `https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH}/public/api-snapshots`;
+const GITHUB_RAW_URL = 'https://raw.githubusercontent.com/Zyuuxyncool/lloydnime/main/public/api-snapshots';
+const LIVE_API_URL = 'https://api-otakudesu-zeta.vercel.app';
+const LOCAL_API_URL = '/otakudesu'; // Use local proxy
 
-// Fallback ke live API (kalau GitHub unavailable)
-const LIVE_API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api-otakudesu-zeta.vercel.app';
-
-export async function getOtakudesuData(endpoint) {
-  const snapshotUrl = `${SNAPSHOTS_BASE}/${endpoint}.json`;
-  const liveUrl = `${LIVE_API_URL}/otakudesu/${endpoint}`;
+/**
+ * Fetch data from a specific Otakudesu endpoint
+ * @param {string} endpoint - The endpoint (e.g., 'home', 'schedule', 'anime/attack-on-titan-sub-indo')
+ * @param {object} options - Additional options
+ * @returns {Promise<{data: any, source: string}>}
+ */
+export async function fetchOtakudesuEndpoint(endpoint, options = {}) {
+  const { useLocal = true, useSnapshot = true, useLocal: preferLocal = true } = options;
 
   try {
-    // Coba GitHub snapshot dulu (bergaransi 5 menit fresh)
-    console.log(`[Snapshot] Trying: ${snapshotUrl}`);
-    const snapshotRes = await fetch(snapshotUrl, { cache: 'no-store' });
-
-    if (snapshotRes.ok) {
-      const data = await snapshotRes.json();
-      console.log(`[Snapshot] ✅ Success`);
-      return {
-        data,
-        source: 'snapshot', // Biar tahu data dari mana
-        timestamp: new Date().toISOString(),
-      };
+    // Priority 1: Try local proxy API first (if enabled)
+    if (useLocal) {
+      try {
+        console.log(`[Snapshot Helper] Trying local proxy: ${LOCAL_API_URL}/${endpoint}`);
+        const response = await fetch(`${LOCAL_API_URL}/${endpoint}`, {
+          cache: 'no-store',
+          signal: AbortSignal.timeout(5000), // 5 second timeout
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`[Snapshot Helper] ✓ Got data from local proxy`);
+          return { data, source: 'local-proxy' };
+        }
+      } catch (error) {
+        console.warn(`[Snapshot Helper] Local proxy failed: ${error.message}`);
+      }
     }
 
-    console.log(`[Snapshot] ⚠️ Status ${snapshotRes.status}, fallback ke live API`);
-  } catch (error) {
-    console.log(`[Snapshot] ⚠️ Error: ${error.message}, fallback ke live API`);
-  }
+    // Priority 2: Try GitHub snapshot (if enabled)
+    if (useSnapshot) {
+      try {
+        const snapshotPath = endpoint === 'home' ? 'home.json' : 
+                            endpoint === 'schedule' ? 'schedule.json' :
+                            endpoint.startsWith('anime/') ? 'anime.json' : 
+                            endpoint.startsWith('genre/') ? 'genre.json' :
+                            null;
 
-  // Fallback ke live API
-  try {
-    console.log(`[Live API] Trying: ${liveUrl}`);
-    const liveRes = await fetch(liveUrl, { cache: 'no-store' });
+        if (snapshotPath) {
+          console.log(`[Snapshot Helper] Trying GitHub snapshot: ${GITHUB_RAW_URL}/${snapshotPath}`);
+          const response = await fetch(`${GITHUB_RAW_URL}/${snapshotPath}`, {
+            cache: 'force-cache', // Cache GitHub snapshots aggressively
+            signal: AbortSignal.timeout(5000),
+          });
 
-    if (liveRes.ok) {
-      const data = await liveRes.json();
-      console.log(`[Live API] ✅ Success`);
-      return {
-        data,
-        source: 'live', // Data dari live API (bisa delayed kalau upstream 403)
-        timestamp: new Date().toISOString(),
-      };
+          if (response.ok) {
+            const data = await response.json();
+            console.log(`[Snapshot Helper] ✓ Got data from GitHub snapshot`);
+            return { data, source: 'github-snapshot' };
+          }
+        }
+      } catch (error) {
+        console.warn(`[Snapshot Helper] GitHub snapshot failed: ${error.message}`);
+      }
     }
 
-    console.log(`[Live API] ❌ Status ${liveRes.status}`);
-    throw new Error(`HTTP ${liveRes.status}`);
+    // Priority 3: Fall back to live API
+    try {
+      console.log(`[Snapshot Helper] Falling back to live API: ${LIVE_API_URL}/${endpoint}`);
+      const response = await fetch(`${LIVE_API_URL}/${endpoint}`, {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`[Snapshot Helper] ✓ Got data from live API`);
+        return { data, source: 'live-api' };
+      }
+
+      throw new Error(`API returned status ${response.status}`);
+    } catch (error) {
+      console.error(`[Snapshot Helper] Live API failed: ${error.message}`);
+      throw error;
+    }
   } catch (error) {
-    console.error(`[Live API] ❌ Fatal error: ${error.message}`);
-    return {
-      data: null,
-      source: 'error',
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    };
+    console.error(`[Snapshot Helper] All sources failed:`, error);
+    throw new Error(`Failed to fetch ${endpoint} from any source: ${error.message}`);
   }
 }
 
 /**
- * Wrapper untuk endpoint tertentu dengan retry logic
+ * Fetch with fallback strategy
  */
-export async function fetchOtakudesuEndpoint(endpoint, options = {}) {
-  const { retries = 2, timeout = 10000 } = options;
-
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      const result = await Promise.race([
-        getOtakudesuData(endpoint),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout')), timeout)
-        ),
-      ]);
-
-      if (result.data || result.source === 'live') {
-        return result;
-      }
-    } catch (error) {
-      console.warn(`[Attempt ${attempt}/${retries}] Failed:`, error.message);
-
-      if (attempt < retries) {
-        // Wait before retry
-        await new Promise((r) => setTimeout(r, 1000 * attempt));
-      }
-    }
+export async function fetchOtakudesuWithFallback(endpoint) {
+  try {
+    return await fetchOtakudesuEndpoint(endpoint, {
+      useLocal: true,
+      useSnapshot: true,
+    });
+  } catch (error) {
+    console.error(`[Snapshot Helper] Final fallback failed for ${endpoint}:`, error);
+    return {
+      data: null,
+      source: 'failed',
+      error: error.message,
+    };
   }
-
-  return {
-    data: null,
-    source: 'error',
-    error: 'All attempts failed',
-    timestamp: new Date().toISOString(),
-  };
 }

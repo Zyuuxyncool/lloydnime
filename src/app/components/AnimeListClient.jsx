@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { getOtakudesuApiUrl } from '@/app/libs/otakudesu-api';
+// Data sudah disiapkan server-side.
 // Kita tidak lagi butuh ikon pencarian
 
 // Komponen Card (Tidak Berubah)
@@ -64,42 +64,8 @@ function LetterFilter({ selectedLetter, onLetterChange }) {
 }
 // ----------------------------------------
 
-// Fungsi fetch ini akan berjalan di KLIEN
-// (Logika ini sudah benar, tidak perlu diubah)
 async function fetchAnimePage(page, letter) {
-    try {
-        const apiUrl = getOtakudesuApiUrl();
-        const response = await fetch(`${apiUrl}/otakudesu/anime?letter=${letter}&page=${page}`);
-
-        if (!response.ok) {
-            throw new Error(`Gagal mengambil data: ${response.status}`);
-        }
-
-        const result = await response.json();
-        const data = result?.data || result;
-        const groupedList = Array.isArray(data?.list) ? data.list : null;
-
-        let list = [];
-        if (groupedList) {
-            if (page > 1) {
-                return [];
-            }
-            const group = groupedList.find((item) => String(item?.startWith || '').toUpperCase() === String(letter).toUpperCase());
-            list = group?.animeList || [];
-        } else {
-            list = data?.animeList || data?.animes || result?.animeList || result?.animes || [];
-        }
-
-        return list.map((anime) => ({
-            ...anime,
-            slug: anime?.animeId || anime?.slug || anime?.anime_id || anime?.id,
-            poster: anime?.poster || anime?.image || anime?.thumbnail || 'https://placehold.co/400x600/171717/ef4444?text=No+Image',
-        }));
-
-    } catch (error) {
-        console.error("Gagal mengambil data anime:", error);
-        return [];
-    }
+    return [];
 }
 
 
@@ -193,48 +159,7 @@ export default function AnimeListClient({ initialData, initialLetter }) {
     }, [loadMoreAnimes]); // 'loadMoreAnimes' sudah memiliki semua dependensi yang benar
 
     useEffect(() => {
-        const apiUrl = getOtakudesuApiUrl();
-        if (!apiUrl) return;
-
-        const missingPosters = animes
-            .filter((anime) => anime?.slug)
-            .filter((anime) => !anime?.poster || anime.poster === NO_IMAGE_URL)
-            .filter((anime) => !posterCacheRef.current.has(anime.slug))
-            .filter((anime) => !posterInFlightRef.current.has(anime.slug))
-            .slice(0, 8);
-
-        if (missingPosters.length === 0) return;
-
-        const fetchMissingPosters = async () => {
-            await Promise.all(
-                missingPosters.map(async (anime) => {
-                    const slug = anime.slug;
-                    posterInFlightRef.current.add(slug);
-                    try {
-                        const response = await fetch(`${apiUrl}/otakudesu/anime?slug=${slug}`);
-                        if (!response.ok) return;
-                        const result = await response.json();
-                        const data = result?.data || result;
-                        const detail = data?.detail || data?.list?.[0] || data;
-                        const poster = detail?.poster || detail?.image || detail?.thumbnail;
-
-                        if (poster) {
-                            posterCacheRef.current.set(slug, poster);
-                            setPosterCache((prev) => ({
-                                ...prev,
-                                [slug]: poster,
-                            }));
-                        }
-                    } catch (error) {
-                        console.error('Gagal mengambil poster anime:', error);
-                    } finally {
-                        posterInFlightRef.current.delete(slug);
-                    }
-                })
-            );
-        };
-
-        fetchMissingPosters();
+        return;
     }, [animes]);
 
     return (

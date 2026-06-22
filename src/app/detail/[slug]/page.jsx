@@ -5,7 +5,7 @@ import Navigation from '@/app/components/Navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { getOtakudesuApiUrl } from '@/app/libs/otakudesu-api';
+import { getAnimeDetailBySlug } from '@/app/libs/anime-db';
 
 function parseLastPathSegment(url = '') {
   const raw = String(url || '').trim();
@@ -18,38 +18,6 @@ function parseLastPathSegment(url = '') {
   } catch {
     return raw.split(/[?#]/)[0].split('/').filter(Boolean).pop() || '';
   }
-}
-
-function normalizeTitleForMatch(value = '') {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/season\s*(\d+)/gi, 's$1')
-    .replace(/\(.*?\)/g, ' ')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/\b(sub|indo|subtitle|indonesia|tv|movie)\b/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function scoreSearchCandidate(keyword, candidate) {
-  const normalizedKeyword = normalizeTitleForMatch(keyword);
-  const normalizedTitle = normalizeTitleForMatch(candidate?.title || '');
-  const normalizedId = normalizeTitleForMatch(candidate?.animeId || candidate?.slug || '');
-
-  if (!normalizedKeyword || !normalizedTitle) return 0;
-  if (normalizedTitle === normalizedKeyword || normalizedId === normalizedKeyword) return 100;
-
-  let score = 0;
-  const tokens = normalizedKeyword.split(' ').filter(Boolean);
-  for (const token of tokens) {
-    if (normalizedTitle.includes(token)) score += 3;
-    if (normalizedId.includes(token)) score += 2;
-  }
-
-  if (normalizedTitle.includes(normalizedKeyword)) score += 10;
-  if (normalizedKeyword.includes(normalizedTitle)) score += 5;
-
-  return score;
 }
 
 function normalizeDetailPayload(result) {
@@ -114,73 +82,6 @@ function isThinDetailPayload(anime = {}) {
   return !hasCoreMeta && synopsisParagraphs.length === 0 && genreCount === 0 && episodeCount === 0;
 }
 
-// Fallback fetch menggunakan Jikan APII
-async function getDetailAnimeFallback(slug) {
-  try {
-    const searchTerm = slug.replace(/-sub-indo|-batch/gi, '').replace(/-/g, ' ');
-    const response = await fetch(
-      `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(searchTerm)}&limit=1`,
-      { next: { revalidate: 3600 } }
-    );
-
-    if (!response.ok) return null;
-
-    const result = await response.json();
-    const item = result?.data?.[0];
-    if (!item) return null;
-
-    return {
-      title: item.title || item.title_english,
-      poster: item.images?.webp?.large_image_url || item.images?.jpg?.large_image_url,
-      synopsis: item.synopsis,
-      type: item.type,
-      status: item.status,
-      genres: item.genres?.map(g => ({ title: g.name })) || [],
-      score: item.score,
-      episodes: item.episodes,
-      studios: item.studios?.map(s => ({ title: s.name })) || [],
-      aired: item.aired?.string,
-      episodeList: [],
-      batchList: [],
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function searchOtakudesuCandidate(title) {
-  const apiUrl = getOtakudesuApiUrl();
-  if (!apiUrl || !title) return null;
-
-  try {
-    const encodedTitle = encodeURIComponent(title);
-    const response = await fetch(`${apiUrl}/otakudesu/search/${encodedTitle}`, {
-      next: { revalidate: 1800 }
-    });
-
-    if (!response.ok) return null;
-
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.toLowerCase().includes('application/json')) return null;
-
-    const result = await response.json();
-    const data = result?.data || result;
-    const rawList = data?.animeList || data?.animes || result?.animeList || result?.animes || [];
-    if (!Array.isArray(rawList) || rawList.length === 0) return null;
-
-    const ranked = rawList
-      .map((item) => ({
-        item,
-        score: scoreSearchCandidate(title, item),
-      }))
-      .sort((left, right) => right.score - left.score);
-
-    return ranked[0]?.score > 0 ? ranked[0].item : null;
-  } catch {
-    return null;
-  }
-}
-
 // Fungsi Fetch Detail Anime
 async function getDetailAnime(slug) {
   try {
@@ -196,129 +97,10 @@ async function getDetailAnime(slug) {
       return null;
     }
 
-    // Check if this is a Jikan result (prefixed with 'jikan-')
-    if (safeSlug.startsWith('jikan-')) {
-      const malId = safeSlug.replace('jikan-', '');
-      // Fetch directly from Jikan API using MAL ID
-      try {
-        const response = await fetch(
-          `https://api.jikan.moe/v4/anime/${malId}`,
-          { cache: 'no-store' }
-        );
-
-        if (response.ok) {
-          const result = await response.json();
-          const item = result?.data;
-          
-          if (item) {
-            const otakudesuCandidate = await searchOtakudesuCandidate(
-              item.title || item.title_english || item.title_japanese || ''
-            );
-
-            if (otakudesuCandidate?.animeId || otakudesuCandidate?.slug) {
-              const resolvedSlug = otakudesuCandidate.animeId || otakudesuCandidate.slug;
-              const resolvedDetail = await getDetailAnime(resolvedSlug);
-              if (resolvedDetail && typeof resolvedDetail === 'object') {
-                return {
-                  ...resolvedDetail,
-                  canonicalSlug: resolvedSlug,
-                };
-              }
-            }
-
-            return {
-              title: item.title || item.title_english,
-              poster: item.images?.webp?.large_image_url || item.images?.jpg?.large_image_url,
-              synopsis: item.synopsis,
-              type: item.type,
-              status: item.status,
-              genres: item.genres?.map(g => ({ title: g.name })) || [],
-              score: item.score,
-              episodes: item.episodes,
-              studios: item.studios?.map(s => ({ title: s.name })) || [],
-              aired: item.aired?.string,
-              episodeList: [],
-              batchList: [],
-            };
-          }
-        }
-      } catch (err) {
-        console.error('Failed to fetch from Jikan with MAL ID:', malId, err);
-      }
-      return null;
-    }
-
-    const apiUrl = getOtakudesuApiUrl();
-    const endpoints = [
-      `${apiUrl}/otakudesu/anime/${encodeURIComponent(safeSlug)}`,
-      `${apiUrl}/otakudesu/anime/${encodeURIComponent(safeSlug.toLowerCase())}`,
-      `${apiUrl}/otakudesu/anime?slug=${encodeURIComponent(safeSlug)}`,
-      `${apiUrl}/otakudesu/anime?slug=${encodeURIComponent(safeSlug.toLowerCase())}`
-    ];
-
-    for (const endpoint of endpoints) {
-      try {
-        const response = await fetch(endpoint, { cache: 'no-store' });
-        
-        if (!response.ok) {
-          continue;
-        }
-
-        const contentType = response.headers.get('content-type') || '';
-        if (!contentType.toLowerCase().includes('application/json')) {
-          continue;
-        }
-
-        const result = await response.json();
-        const normalized = normalizeDetailPayload(result);
-        const animeData =
-          normalized?.detail ||
-          result?.data?.list?.[0] ||
-          result?.data ||
-          result?.detail ||
-          result;
-
-        if (
-          animeData &&
-          (animeData.title || animeData.episodeList || animeData.info?.episodeList || normalized?.episodeList?.length > 0)
-        ) {
-          const mergedAnimeData = {
-            ...animeData,
-            episodeList: Array.isArray(animeData.episodeList) && animeData.episodeList.length > 0
-              ? animeData.episodeList
-              : normalized?.episodeList || [],
-          };
-
-          if (isThinDetailPayload(mergedAnimeData)) {
-            const jikanFallback = await getDetailAnimeFallback(
-              mergedAnimeData?.title || safeSlug
-            );
-
-            if (jikanFallback) {
-              return {
-                ...mergedAnimeData,
-                ...jikanFallback,
-                // Keep Otakudesu identity while only enriching missing metadata.
-                title: mergedAnimeData.title || jikanFallback.title,
-                poster: mergedAnimeData.poster || jikanFallback.poster,
-                episodeList: Array.isArray(mergedAnimeData.episodeList) ? mergedAnimeData.episodeList : [],
-                batchList: mergedAnimeData.batchList || jikanFallback.batchList || [],
-              };
-            }
-          }
-
-          return mergedAnimeData;
-        }
-      } catch {
-        continue;
-      }
-    }
-
-    // Semua endpoint gagal, coba fallback
-    return await getDetailAnimeFallback(safeSlug);
+    return await getAnimeDetailBySlug(safeSlug);
   } catch (error) {
-    console.error("Gagal mengambil detail anime:", error);
-    return await getDetailAnimeFallback(slug);
+    console.error("Gagal mengambil detail anime dari database:", error);
+    return null;
   }
 }
 
@@ -420,6 +202,22 @@ export default async function DetailAnimePage({ params: paramsPromise }) {
   const rawEpisodes = Array.isArray(rawEpisodesSource)
     ? rawEpisodesSource
     : (rawEpisodesSource?.episodeList || rawEpisodesSource?.list || rawEpisodesSource?.episodes || []);
+
+  const rawRecommended = pickFirst(
+    anime.recommendedAnimeList,
+    anime.recommendAnimeList,
+    anime.recommendations,
+    anime.relatedAnimeList,
+    anime.relatedAnime,
+    []
+  );
+  const recommendedAnimeList = (Array.isArray(rawRecommended) ? rawRecommended : [])
+    .map((item) => ({
+      slug: item?.slug || item?.animeId || item?.anime_id || item?.id || null,
+      title: item?.title || item?.name || item?.judul || 'Anime',
+      poster: item?.poster || item?.image || item?.thumbnail || 'https://placehold.co/200x300/171717/ef4444?text=No+Image',
+    }))
+    .filter((item) => Boolean(item.slug));
 
   const episodeList = (Array.isArray(rawEpisodes) ? rawEpisodes : []).map((episode, index) => {
     const watchSlug =
@@ -662,14 +460,14 @@ export default async function DetailAnimePage({ params: paramsPromise }) {
       </div>
 
       {/* Bagian Recommended Anime */}
-      {anime.recommendedAnimeList && Array.isArray(anime.recommendedAnimeList) && anime.recommendedAnimeList.length > 0 && (
+      {recommendedAnimeList.length > 0 && (
         <div className="relative z-10 container mx-auto px-4 md:px-8 py-8 border-t border-neutral-700">
           <h2 className="text-2xl font-bold mb-6">Recommended Anime</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {anime.recommendedAnimeList.map((recAnime, index) => (
+            {recommendedAnimeList.map((recAnime, index) => (
               <Link
-                key={`${recAnime.animeId}-${index}`}
-                href={`/detail/${recAnime.animeId}`}
+                key={`${recAnime.slug || recAnime.title || 'recommended'}-${index}`}
+                href={`/detail/${recAnime.slug}`}
                 className="group relative rounded-lg overflow-hidden hover:scale-105 transition-transform duration-300"
               >
                 <Image

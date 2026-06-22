@@ -2,7 +2,7 @@ import AnimeCard from '@/app/components/AnimeCard';
 import SearchInput from '@/app/components/SearchInput';
 import Navigation from '@/app/components/Navigation';
 import BreadcrumbNavigation from '@/app/components/BreadcrumbNavigation';
-import { getOtakudesuApiUrl } from '@/app/libs/otakudesu-api';
+import { searchAnimeByKeyword } from '@/app/libs/anime-db';
 
 function parseAnimeSlugFromHref(href = '') {
   const raw = String(href || '').trim();
@@ -55,152 +55,23 @@ function scoreFallbackCandidate(item, candidate) {
   return score;
 }
 
-async function resolveFallbackSlug(apiUrl, item) {
-  const queries = [item?.title, item?.title_english, item?.title_japanese].filter(Boolean);
-  if (!apiUrl || queries.length === 0) return null;
-
-  const candidateMap = new Map();
-
-  for (const query of queries) {
-    try {
-      const response = await fetch(`${apiUrl}/otakudesu/search/${encodeURIComponent(query)}`, {
-        next: { revalidate: 300 }
-      });
-
-      if (!response.ok) continue;
-
-      const contentType = response.headers.get('content-type') || '';
-      if (!contentType.toLowerCase().includes('application/json')) continue;
-
-      const result = await response.json();
-      const data = result?.data || result;
-      const rawAnimes = data?.animeList || data?.animes || result?.animes || result?.animeList || [];
-
-      for (const anime of rawAnimes) {
-        const parsedFromHref = parseAnimeSlugFromHref(anime?.href || anime?.url || anime?.otakudesuUrl || '');
-        const candidateSlug = anime?.animeId || anime?.slug || anime?.anime_id || parsedFromHref || anime?.id;
-        if (!candidateSlug) continue;
-
-        if (!candidateMap.has(candidateSlug)) {
-          candidateMap.set(candidateSlug, {
-            ...anime,
-            animeId: candidateSlug,
-          });
-        }
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  const ranked = [...candidateMap.values()]
-    .map((candidate) => ({
-      candidate,
-      score: scoreFallbackCandidate(item, candidate),
-    }))
-    .sort((left, right) => right.score - left.score);
-
-  return ranked[0]?.score >= 12 ? ranked[0].candidate : null;
+async function resolveFallbackSlug() {
+  return null;
 }
 
-async function searchFallback(keyword, apiUrl) {
-  try {
-    const response = await fetch(
-      `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(keyword)}&limit=20`,
-      { next: { revalidate: 600 } }
-    );
-
-    if (!response.ok) return [];
-
-    const result = await response.json();
-    const list = Array.isArray(result?.data) ? result.data : [];
-
-    const processed = await Promise.all(
-      list.map(async (item) => {
-        const malId = item?.mal_id;
-        const title = item?.title || item?.title_english || 'Unknown';
-        const fallbackPoster = item?.images?.webp?.large_image_url || item?.images?.jpg?.image_url;
-        const resolved = await resolveFallbackSlug(apiUrl, item);
-
-        return {
-          title: resolved?.title || title,
-          slug: resolved?.animeId || resolved?.slug || (malId ? `jikan-${malId}` : null),
-          poster: resolved?.poster || resolved?.image || resolved?.thumbnail || fallbackPoster,
-          episode: resolved?.episode || resolved?.episodes || item?.episodes || '?',
-          type: resolved?.type || item?.type || 'TV',
-        };
-      })
-    );
-
-    return processed.filter((anime) => Boolean(anime.title && anime.poster));
-  } catch {
-    return [];
-  }
+async function searchFallback() {
+  return [];
 }
 
 async function searchAnime(slug) {
   if (!slug) return [];
 
   try {
-    const apiUrl = getOtakudesuApiUrl();
     const keyword = decodeURIComponent(slug);
-    const encodedKeyword = encodeURIComponent(keyword);
-    
-    const endpoints = [
-      `${apiUrl}/otakudesu/search/${encodedKeyword}`
-    ];
-
-    let animes = [];
-
-    for (const searchUrl of endpoints) {
-      try {
-        const response = await fetch(searchUrl, {
-          next: { revalidate: 600 }
-        });
-
-        if (!response.ok) {
-          if (response.status >= 500) {
-            console.error(`API error for "${keyword}": Status ${response.status}`);
-          }
-          continue;
-        }
-
-        const contentType = response.headers.get('content-type') || '';
-        if (!contentType.toLowerCase().includes('application/json')) {
-          continue;
-        }
-
-        const result = await response.json();
-        const data = result?.data || result;
-        const rawAnimes = data?.animeList || data?.animes || result?.animes || result?.animeList || [];
-
-        animes = rawAnimes.map((anime) => {
-          // Prefer Otakudesu slug from href/animeId to avoid fallback to jikan-* URL.
-          const parsedFromHref = parseAnimeSlugFromHref(anime?.href || anime?.url || anime?.otakudesuUrl || '');
-          const normalizedSlug = anime?.animeId || anime?.slug || anime?.anime_id || parsedFromHref || anime?.id;
-          
-          return {
-            ...anime,
-            slug: normalizedSlug,
-            poster: anime?.poster || anime?.image || anime?.thumbnail,
-            episode: anime?.episode || anime?.episodes || anime?.latestEpisode,
-          };
-        }).filter((anime) => Boolean(anime?.slug));
-
-        if (animes.length > 0) break;
-      } catch (err) {
-        continue;
-      }
-    }
-
-    if (animes.length === 0) {
-      animes = await searchFallback(keyword, apiUrl);
-    }
-
-    return animes;
+    return await searchAnimeByKeyword(keyword, 24);
   } catch (error) {
-    console.error("Error saat pencarian:", error);
-    return await searchFallback(decodeURIComponent(slug), getOtakudesuApiUrl());
+    console.error("Error saat pencarian dari database:", error);
+    return [];
   }
 }
 
