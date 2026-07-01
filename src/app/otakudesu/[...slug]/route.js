@@ -1,35 +1,67 @@
 // API Route untuk Otakudesu - Forward requests ke external API
 const EXTERNAL_API_URL = (process.env.OTAKUDESU_API_URL || 'http://152.42.181.126/otakudesu').replace(/\/+$/, '');
 
-export async function GET(request, { params }) {
+async function proxyOtakudesuRequest(request, { params }) {
   try {
     const { slug } = await params;
-    
+
     // Build the full path from slug array
     const path = slug ? '/' + slug.join('/') : '';
-    
+
     // Get query parameters
     const { searchParams } = new URL(request.url);
     const queryString = searchParams.toString();
-    
+
     // Build complete URL
     const url = `${EXTERNAL_API_URL}${path}${queryString ? '?' + queryString : ''}`;
-    
-    console.log(`[Otakudesu Route] Proxying to: ${url}`);
-    
+
+    console.log(`[Otakudesu Route] Proxying ${request.method} to: ${url}`);
+
+    const headers = {
+      'User-Agent': 'Next.js Proxy',
+      'Accept': 'application/json',
+    };
+
+    let body;
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      body = await request.text();
+      if (body) {
+        headers['Content-Type'] = request.headers.get('content-type') || 'application/json';
+      }
+    }
+
     // Forward request to external API
     const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Next.js Proxy',
-        'Accept': 'application/json',
-      },
+      method: request.method,
+      headers,
+      body,
       cache: 'no-store', // Don't cache for fresh data
     });
-    
-    // Get response data
-    const data = await response.json();
-    
+
+    const contentType = response.headers.get('content-type') || '';
+    const responseText = await response.text();
+    let data;
+
+    if (contentType.includes('application/json')) {
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        data = responseText;
+      }
+    } else {
+      data = responseText;
+    }
+
+    if (typeof data === 'string') {
+      return new Response(data, {
+        status: response.status,
+        headers: {
+          'Content-Type': contentType || 'text/plain; charset=utf-8',
+          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600', // 5 min cache
+        },
+      });
+    }
+
     // Return with appropriate status
     return Response.json(data, {
       status: response.status,
@@ -40,7 +72,7 @@ export async function GET(request, { params }) {
     });
   } catch (error) {
     console.error('[Otakudesu Route Error]', error);
-    
+
     return Response.json(
       {
         status: 'error',
@@ -57,6 +89,14 @@ export async function GET(request, { params }) {
   }
 }
 
+export async function GET(request, { params }) {
+  return proxyOtakudesuRequest(request, { params });
+}
+
+export async function POST(request, { params }) {
+  return proxyOtakudesuRequest(request, { params });
+}
+
 export async function HEAD(request, { params }) {
-  return GET(request, params);
+  return proxyOtakudesuRequest(request, { params });
 }

@@ -8,6 +8,8 @@ import React from 'react';
 import Navbar from "./components/Navbar"; 
 import { AuthUserSession } from "./libs/auth-libs"; 
 import { getHomeAnimeSections } from './libs/anime-db';
+import { extractHomeSections } from './libs/otakudesu-normalize';
+import { fetchOtakudesuWithFallback } from './libs/otakudesu-snapshot-helper';
 
 function ApiWarningMessage({ sectionTitle }) {
   return (
@@ -37,7 +39,18 @@ function AnimeListSkeleton() {
 
 async function fetchAnimeHome(desiredLimit = 10) {
   try {
-    return await getHomeAnimeSections(desiredLimit);
+    const dbResult = await getHomeAnimeSections(desiredLimit);
+    if (dbResult && ((Array.isArray(dbResult.ongoing) && dbResult.ongoing.length > 0) || (Array.isArray(dbResult.completed) && dbResult.completed.length > 0))) {
+      return dbResult;
+    }
+
+    console.warn("Home DB result empty; falling back to Otakudesu API.");
+    const fallbackResponse = await fetchOtakudesuWithFallback('home');
+    if (fallbackResponse?.data) {
+      return extractHomeSections(fallbackResponse.data);
+    }
+
+    return dbResult;
   } catch (error) {
     console.error("Error fetching home anime from database:", error);
     return null;

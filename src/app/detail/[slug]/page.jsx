@@ -4,6 +4,7 @@ import ResponsiveBreadcrumb from '@/app/components/ResponsiveBreadcrumb';
 import Navigation from '@/app/components/Navigation';
 import Image from 'next/image';
 import Link from 'next/link';
+import { normalizeEpisodeItem } from '@/app/libs/otakudesu-normalize';
 import { redirect } from 'next/navigation';
 import { getAnimeDetailBySlug } from '@/app/libs/anime-db';
 
@@ -219,58 +220,17 @@ export default async function DetailAnimePage({ params: paramsPromise }) {
     }))
     .filter((item) => Boolean(item.slug));
 
-  const episodeList = (Array.isArray(rawEpisodes) ? rawEpisodes : []).map((episode, index) => {
-    const watchSlug =
-      episode?.episodeId ||
-      episode?.episodeID ||
-      episode?.episode_id ||
-      episode?.slug ||
-      episode?.slugEpisode ||
-      episode?.episodeSlug ||
-      episode?.id ||
-      (typeof episode?.link === 'string' && parseLastPathSegment(episode.link)) ||
-      (typeof episode?.href === 'string' && parseLastPathSegment(episode.href)) ||
-      (typeof episode?.otakudesuUrl === 'string' && parseLastPathSegment(episode.otakudesuUrl)) ||
-      '';
+  // Normalize episodes using shared utility to ensure consistent `eps`, `title`, and `watchSlug`.
+  let episodeList = (Array.isArray(rawEpisodes) ? rawEpisodes : []).map((episode, index) =>
+    normalizeEpisodeItem(episode, index)
+  ).filter((episode) => Boolean(episode.watchSlug));
 
-    // Extract episode number from various sources
-    const episodeNumber = 
-      episode?.eps || 
-      episode?.episode || 
-      episode?.number || 
-      episode?.episodeNumber ||
-      episode?.episodeNo ||
-      episode?.ep ||
-      (episode?.title && /episode\s*(\d+)/i.test(episode.title) ? episode.title.match(/episode\s*(\d+)/i)[1] : null) ||
-      (episode?.name && /episode\s*(\d+)/i.test(episode.name) ? episode.name.match(/episode\s*(\d+)/i)[1] : null) ||
-      (index + 1); // Fallback to index + 1
-
-    // Extract title with fallbacks
-    const episodeTitle = 
-      episode?.title || 
-      episode?.name || 
-      episode?.label ||
-      episode?.episodeTitle ||
-      `Episode ${episodeNumber}`;
-
-    // Extract date with fallbacks
-    const episodeDate = 
-      episode?.date || 
-      episode?.releaseDate || 
-      episode?.released ||
-      episode?.uploadDate ||
-      episode?.postedDate ||
-      episode?.createdAt ||
-      'Unknown';
-
-    return {
-      ...episode,
-      watchSlug,
-      eps: episodeNumber,
-      title: episodeTitle,
-      date: episodeDate,
-    };
-  }).filter((episode) => Boolean(episode.watchSlug));
+  // Sort episodes ascending by numeric episode number so Ep 1 appears first
+  episodeList.sort((a, b) => {
+    const na = Number(String(a.eps).match(/(\d+)/)?.[1] || 0);
+    const nb = Number(String(b.eps).match(/(\d+)/)?.[1] || 0);
+    return na - nb;
+  });
 
   const firstEpisodeSlug = episodeList?.[0]?.watchSlug || '';
 
@@ -411,49 +371,67 @@ export default async function DetailAnimePage({ params: paramsPromise }) {
 
       {/* Bagian Episode List */}
       <div className="relative z-10 container mx-auto px-4 md:px-8 py-8">
-        <h2 className="text-2xl font-bold mb-4">Episodes</h2>
+        <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-neutral-800 bg-neutral-800/70 p-5 shadow-xl sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-pink-400">Daftar Episode</p>
+            <h2 className="text-2xl font-bold text-white">Episodes</h2>
+            <p className="mt-1 text-sm text-neutral-400">
+              Pilih episode yang ingin ditonton dari daftar yang lebih rapi di bawah ini.
+            </p>
+          </div>
+          <div className="rounded-full bg-pink-600/10 px-3 py-1 text-sm font-medium text-pink-300">
+            {episodeList.length > 0 ? `${episodeList.length} episode tersedia` : 'Belum tersedia'}
+          </div>
+        </div>
         <div className="space-y-4">
           {episodeList && Array.isArray(episodeList) && episodeList.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {episodeList.map((episode, index) => (
                 <Link
                   key={`${episode.watchSlug}-${index}`}
                   href={`/watch/${episode.watchSlug}?${queryString}`}
-                  className="bg-neutral-800 rounded-lg p-4 flex items-center space-x-4 hover:bg-neutral-700 transition"
+                  className="group rounded-2xl border border-neutral-700 bg-neutral-800 p-4 transition-all duration-200 hover:-translate-y-1 hover:border-pink-500/50 hover:bg-neutral-700"
                 >
-                  <div className="w-24 h-12 bg-neutral-700 rounded flex items-center justify-center flex-shrink-0">
-                    <span className="text-pink-500 font-bold text-sm">
-                      Ep {episode.eps}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-pink-600/20 text-sm font-bold text-pink-400">
+                        Ep {episode.eps}
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-semibold text-white transition group-hover:text-pink-300">
+                          {episode.title}
+                        </h3>
+                        <p className="mt-1 text-xs text-neutral-400">
+                          {episode.date !== 'Unknown' ? episode.date : (duration !== 'N/A' ? duration : 'Tersedia')}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="rounded-full bg-neutral-700 px-2.5 py-1 text-[11px] font-medium text-neutral-300">
+                      Watch
                     </span>
-                  </div>
-                  <div className="flex-1 overflow-hidden">
-                    <h3 className="text-sm font-semibold line-clamp-2">
-                      {episode.title}
-                    </h3>
-                    <p className="text-xs text-neutral-400">
-                      {episode.date !== 'Unknown' ? episode.date : (duration !== 'N/A' ? duration : '')}
-                    </p>
                   </div>
                 </Link>
               ))}
             </div>
           ) : (
-            <div className="bg-neutral-800 rounded-lg p-6 flex items-center justify-between">
-              <div>
-                <p className="text-lg font-semibold text-white">Episode belum tersedia</p>
-                {typeof totalEpisodesValue === 'number' && totalEpisodesValue > 0 ? (
-                  <p className="text-neutral-400">Total Episodes: {totalEpisodesValue}</p>
-                ) : (
-                  <p className="text-neutral-400">Belum ada daftar episode untuk anime ini.</p>
-                )}
+            <div className="rounded-2xl border border-neutral-800 bg-neutral-800/70 p-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-lg font-semibold text-white">Episode belum tersedia</p>
+                  {typeof totalEpisodesValue === 'number' && totalEpisodesValue > 0 ? (
+                    <p className="text-neutral-400">Total Episodes: {totalEpisodesValue}</p>
+                  ) : (
+                    <p className="text-neutral-400">Belum ada daftar episode untuk anime ini.</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  disabled
+                  className="rounded-full bg-neutral-700 px-6 py-3 text-neutral-300 cursor-not-allowed"
+                >
+                  Episode belum tersedia
+                </button>
               </div>
-              <button
-                type="button"
-                disabled
-                className="bg-neutral-700 text-neutral-300 px-6 py-3 rounded-full cursor-not-allowed"
-              >
-                Episode belum tersedia
-              </button>
             </div>
           )}
         </div>

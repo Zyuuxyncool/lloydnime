@@ -48,7 +48,24 @@ function normalizeSlugValue(item) {
 }
 
 function normalizePosterValue(item) {
-  return pickFirst(item?.poster, item?.image, item?.thumbnail, item?.posterUrl, item?.cover, item?.coverImage);
+  return pickFirst(
+    item?.poster,
+    item?.poster_url,
+    item?.posterUrl,
+    item?.image,
+    item?.image_url,
+    item?.imageUrl,
+    item?.thumbnail,
+    item?.thumbnail_url,
+    item?.cover,
+    item?.cover_url,
+    item?.coverImage,
+    item?.cover_image,
+    item?.coverImg,
+    item?.coverimg,
+    item?.coverImageUrl,
+    item?.cover_image_url,
+  );
 }
 
 export function normalizeAnimeItem(item = {}) {
@@ -67,7 +84,7 @@ export function normalizeAnimeItem(item = {}) {
 
 export function extractAnimeList(result) {
   const payload = result?.data || result || {};
-  const list =
+  let list =
     payload?.animeList ||
     payload?.animes ||
     payload?.list ||
@@ -75,6 +92,10 @@ export function extractAnimeList(result) {
     result?.animes ||
     result?.list ||
     [];
+
+  if (Array.isArray(list) && list.length > 0 && list[0] && typeof list[0] === 'object' && Array.isArray(list[0].animeList)) {
+    list = list.flatMap((group) => toArray(group.animeList));
+  }
 
   return toArray(list).map((item) => normalizeAnimeItem(item));
 }
@@ -138,14 +159,14 @@ export function extractGenreList(result) {
 
 export function extractScheduleMap(result) {
   const payload = result?.data || result || {};
-  const scheduleSource = payload?.schedule || payload;
+  const scheduleSource = payload?.schedule || payload?.scheduleList || payload;
   const normalized = {};
 
   if (Array.isArray(scheduleSource)) {
     scheduleSource.forEach((entry) => {
       const day = String(entry?.day || entry?.name || entry?.title || '').toLowerCase().trim();
       if (!day) return;
-      normalized[day] = toArray(entry?.anime_list || entry?.animeList || entry?.animes || entry?.list).map((item) =>
+      normalized[day] = toArray(entry?.anime_list || entry?.animeList || entry?.animes || entry?.list || entry?.animeList).map((item) =>
         normalizeAnimeItem(item)
       );
     });
@@ -172,7 +193,11 @@ export function normalizeEpisodeItem(episode = {}, index = 0) {
     episode?.id
   );
 
+  const rawSlug = String(episode?.slug || episode?.episodeSlug || episode?.watchSlug || episode?.episodeId || '') || '';
+  const slugEpisodeNumber = rawSlug.match(/episode[-_]?(\d+)/i)?.[1] || null;
+
   const episodeNumber = pickFirst(
+    slugEpisodeNumber,
     episode?.eps,
     episode?.episode,
     episode?.number,
@@ -184,10 +209,15 @@ export function normalizeEpisodeItem(episode = {}, index = 0) {
     index + 1
   );
 
-  const title = toText(
-    pickFirst(episode?.title, episode?.name, episode?.label, episode?.episodeTitle, `Episode ${episodeNumber}`),
-    `Episode ${episodeNumber}`
-  );
+  const normalizedEpisodeNumber = String(episodeNumber || index + 1).match(/(\d+)/)?.[1] || String(index + 1);
+
+  // Prefer provided title, but if it's numeric only (e.g. "13") use a friendly "Episode N" title
+  const rawPickedTitle = pickFirst(episode?.title, episode?.name, episode?.label, episode?.episodeTitle, `Episode ${normalizedEpisodeNumber}`);
+  let finalPickedTitle = typeof rawPickedTitle === 'string' ? rawPickedTitle.trim() : rawPickedTitle;
+  if (typeof finalPickedTitle === 'string' && /^[0-9]+$/.test(finalPickedTitle)) {
+    finalPickedTitle = `Episode ${normalizedEpisodeNumber}`;
+  }
+  const title = toText(finalPickedTitle, `Episode ${normalizedEpisodeNumber}`);
 
   const date = toText(
     pickFirst(episode?.date, episode?.releaseDate, episode?.released, episode?.uploadDate, episode?.postedDate, episode?.createdAt),
@@ -197,7 +227,7 @@ export function normalizeEpisodeItem(episode = {}, index = 0) {
   return {
     ...episode,
     watchSlug,
-    eps: episodeNumber,
+    eps: normalizedEpisodeNumber,
     title,
     date,
   };

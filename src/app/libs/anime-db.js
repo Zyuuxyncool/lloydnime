@@ -1,7 +1,85 @@
 import prisma from '@/app/libs/prisma';
+import { extractAnimeList, extractHomeSections, extractScheduleMap, extractGenreList } from './otakudesu-normalize';
 
 const NO_IMAGE_URL = 'https://placehold.co/400x600/171717/ef4444?text=No+Image';
 const DEFAULT_PAGE_SIZE = 20;
+const USE_DATABASE = process.env.USE_OTAKUDESU_DB === 'true';
+const DEFAULT_OTAKUDESU_API_URL = (process.env.OTAKUDESU_API_URL || 'http://152.42.181.126/otakudesu').replace(/\/+$/, '');
+
+function buildOtakudesuUrl(endpoint, query = {}) {
+  const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = new URL(`${DEFAULT_OTAKUDESU_API_URL}${path}`);
+
+  Object.entries(query || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      url.searchParams.set(key, String(value));
+    }
+  });
+
+  return url.toString();
+}
+
+function buildLocalProxyUrl(endpoint, query = {}) {
+  const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const proxyPath = path.startsWith('/otakudesu') ? path : `/otakudesu${path}`;
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || (process.env.NODE_ENV === 'development' ? 'http://127.0.0.1:3000' : 'http://localhost:3000');
+  const url = new URL(proxyPath, baseUrl);
+
+  Object.entries(query || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      url.searchParams.set(key, String(value));
+    }
+  });
+
+  return url.toString();
+}
+
+async function fetchOtakudesuEndpoint(endpoint, query = {}) {
+  const candidates = [buildOtakudesuUrl(endpoint, query)];
+  if (process.env.NODE_ENV === 'development' || !process.env.VERCEL_ENV) {
+    candidates.push(buildLocalProxyUrl(endpoint, query));
+  }
+
+  let lastError;
+
+  for (const url of candidates) {
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        cache: 'no-store',
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Next.js Otakudesu Proxy',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Otakudesu API fetch failed: ${response.status} ${response.statusText}`);
+      }
+
+      const text = await response.text();
+      let payload = null;
+
+      if (text) {
+        try {
+          payload = JSON.parse(text);
+        } catch {
+          payload = text;
+        }
+      }
+
+      if (payload && typeof payload === 'object') {
+        return payload?.data ?? payload;
+      }
+
+      throw new Error('Otakudesu API returned empty payload');
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error('Otakudesu API fetch failed');
+}
 
 function toSafeString(value) {
   if (value === null || value === undefined) return '';
@@ -14,6 +92,77 @@ function normalizeMaybeEmpty(value) {
   return text;
 }
 
+function extractRemotePagination(result, currentPage = 1, pageSize = DEFAULT_PAGE_SIZE) {
+  if (!result || typeof result !== 'object') {
+    return makePagination(0, currentPage, pageSize);
+  }
+
+  const paginationSource = result?.pagination || result?.paging || result?.meta || result || {};
+  const page = Number(
+    pickFirst(
+      paginationSource?.currentPage,
+      paginationSource?.current_page,
+      paginationSource?.page,
+      paginationSource?.pageNumber,
+      paginationSource?.page_num,
+      paginationSource?.pageNum,
+      currentPage
+    )
+  ) || currentPage;
+
+  const totalPages = Number(
+    pickFirst(
+      paginationSource?.totalPages,
+      paginationSource?.total_pages,
+      paginationSource?.last_page,
+      paginationSource?.pageCount,
+      paginationSource?.totalPage,
+      paginationSource?.page_count,
+      paginationSource?.pages,
+      1
+    )
+  ) || 1;
+
+  const totalItems = Number(
+    pickFirst(
+      paginationSource?.totalItems,
+      paginationSource?.total_items,
+      paginationSource?.count,
+      paginationSource?.total,
+      0
+    )
+  ) || 0;
+
+  const normalizedPageSize = Number(
+    pickFirst(
+      paginationSource?.pageSize,
+      paginationSource?.perPage,
+      paginationSource?.limit,
+      pageSize
+    )
+  ) || pageSize;
+
+  const finalTotalPages = totalPages > 0 ? totalPages : (totalItems > 0 ? Math.max(1, Math.ceil(totalItems / normalizedPageSize)) : 1);
+  const hasPrev = page > 1 || Boolean(paginationSource?.hasPrev || paginationSource?.has_prev || paginationSource?.prev_page);
+  const hasNext = Boolean(
+    paginationSource?.hasNext ||
+    paginationSource?.has_next ||
+    paginationSource?.next_page ||
+    page < finalTotalPages
+  );
+
+  return {
+    currentPage: page,
+    totalPages: finalTotalPages,
+    hasPrev,
+    hasNext,
+    hasPrevPage: hasPrev,
+    hasNextPage: hasNext,
+    totalItems,
+    pageSize: normalizedPageSize,
+  };
+}
+
 function pickFirst(...values) {
   for (const value of values) {
     if (value !== undefined && value !== null && value !== '') return value;
@@ -22,7 +171,103 @@ function pickFirst(...values) {
 }
 
 function getPoster(row) {
-  return pickFirst(row?.poster_url, row?.metadata?.poster, row?.metadata?.image, NO_IMAGE_URL);
+  return pickFirst(
+    row?.poster_url,
+    row?.posterUrl,
+    row?.poster,
+    row?.metadata?.poster,
+    row?.metadata?.poster_url,
+    row?.metadata?.image,
+    row?.metadata?.image_url,
+    NO_IMAGE_URL
+  );
+}
+
+function normalizeRemoteDetailPayload(result) {
+  const payload = result?.data || result || {};
+  const detail = payload?.details || payload?.detail || payload?.anime || payload?.data?.details || payload?.data?.detail || payload?.data?.anime || payload || {};
+  const poster = pickFirst(
+    detail?.poster,
+    detail?.poster_url,
+    detail?.posterUrl,
+    detail?.image,
+    detail?.image_url,
+    detail?.imageUrl,
+    detail?.thumbnail,
+    detail?.thumbnail_url,
+    payload?.poster,
+    payload?.poster_url,
+    payload?.posterUrl,
+    payload?.image,
+    payload?.image_url,
+    payload?.imageUrl,
+    payload?.thumbnail,
+    payload?.thumbnail_url,
+    NO_IMAGE_URL
+  );
+  const rawGenres = pickFirst(detail?.genreList, detail?.genres, payload?.genreList, payload?.genres, []);
+  const rawEpisodes = pickFirst(detail?.episodeList, detail?.episodes, payload?.episodeList, payload?.episodes, []);
+
+  const genres = (Array.isArray(rawGenres) ? rawGenres : []).map((genre) => ({
+    genreId: genre?.genreId || genre?.slug || genre?.id,
+    title: genre?.title || genre?.name || genre?.genre || genre,
+    name: genre?.name || genre?.title || genre?.genre || genre,
+  }));
+
+  const synopsis = pickFirst(
+    detail?.synopsis?.text,
+    detail?.synopsis?.paragraphs && Array.isArray(detail?.synopsis?.paragraphs) ? detail.synopsis.paragraphs.join('\n') : null,
+    detail?.description,
+    detail?.desc,
+    detail?.synopsis,
+    payload?.synopsis,
+    payload?.description,
+    payload?.desc,
+    null
+  );
+
+  const totalEpisodes = pickFirst(
+    detail?.totalEpisodes,
+    detail?.episodeCount,
+    detail?.episodesCount,
+    detail?.episode_total,
+    detail?.episodeTotal,
+    payload?.totalEpisodes,
+    payload?.episodeCount,
+    payload?.episodesCount,
+    payload?.episode_total,
+    payload?.episodeTotal,
+    Array.isArray(rawEpisodes) ? rawEpisodes.length : null,
+    null
+  );
+
+  return {
+    id: pickFirst(detail?.animeId, payload?.animeId, payload?.slug, payload?.id, null),
+    animeId: pickFirst(detail?.animeId, payload?.animeId, payload?.slug, payload?.id, null),
+    slug: pickFirst(detail?.animeId, payload?.animeId, payload?.slug, payload?.id, null),
+    title: pickFirst(detail?.title, payload?.title, payload?.name, detail?.name, null),
+    name: pickFirst(detail?.title, payload?.title, payload?.name, detail?.name, null),
+    japaneseTitle: pickFirst(detail?.japanese, detail?.japaneseTitle, payload?.japanese, null),
+    poster,
+    image: poster,
+    thumbnail: poster,
+    synopsis,
+    totalEpisodes,
+    episodesCount: Number.isFinite(Number(totalEpisodes)) ? Number(totalEpisodes) : Array.isArray(rawEpisodes) ? rawEpisodes.length : null,
+    status: pickFirst(detail?.status, payload?.status, null),
+    score: pickFirst(detail?.score, payload?.score, null),
+    type: pickFirst(detail?.type, payload?.type, null),
+    duration: pickFirst(detail?.duration, payload?.duration, null),
+    aired: pickFirst(detail?.aired, payload?.aired, null),
+    studios: pickFirst(detail?.studios, payload?.studios, null),
+    producers: pickFirst(detail?.producers, payload?.producers, null),
+    genres,
+    genreList: genres,
+    episodeList: Array.isArray(rawEpisodes) ? rawEpisodes : [],
+    batch: pickFirst(payload?.batch, detail?.batch, null),
+    info: detail && typeof detail === 'object' ? detail : payload,
+    rawInfoPayload: detail && typeof detail === 'object' ? detail : payload,
+  };
 }
 
 export function normalizeAnimeRow(row = {}) {
@@ -271,6 +516,16 @@ export function filterAnimeByLetter(animes = [], letter = 'A') {
 }
 
 export async function getAllAnimeList() {
+  if (!USE_DATABASE) {
+    try {
+      const result = await fetchOtakudesuEndpoint('/anime');
+      return extractAnimeList(result);
+    } catch (error) {
+      console.error('Failed to fetch all anime from Otakudesu API:', error);
+      return [];
+    }
+  }
+
   const rows = await prisma.$queryRaw`
     SELECT id, source_key, anime_id, batch_id, title, japanese_title, poster_url, anime_url, status, score, episodes, duration, aired, studios, producers, type, release_day, latest_release_date, last_release_date, season, synopsis, metadata, created_at, updated_at
     FROM animes
@@ -281,6 +536,16 @@ export async function getAllAnimeList() {
 }
 
 export async function getHomeAnimeSections(limit = 10) {
+  if (!USE_DATABASE) {
+    try {
+      const result = await fetchOtakudesuEndpoint('/home');
+      return extractHomeSections(result);
+    } catch (error) {
+      console.error('Failed to fetch home anime sections from Otakudesu API:', error);
+      return { ongoing: [], completed: [], all: [] };
+    }
+  }
+
   const nowParts = getJakartaNowParts();
   const [ongoingRows, completedRows] = await Promise.all([
     prisma.$queryRaw`
@@ -430,6 +695,23 @@ export async function getAnimeByStatus(status, page = 1, pageSize = 20) {
   const offset = (currentPage - 1) * pageSize;
   const safeStatus = String(status || '').trim();
 
+  if (!USE_DATABASE) {
+    try {
+      const endpoint = safeStatus.toLowerCase() === 'ongoing' ? '/ongoing' : '/completed';
+      const result = await fetchOtakudesuEndpoint(endpoint, { page: currentPage });
+      return {
+        animes: extractAnimeList(result),
+        pagination: extractRemotePagination(result, currentPage, pageSize),
+      };
+    } catch (error) {
+      console.error('Failed to fetch anime by status from Otakudesu API:', error);
+      return {
+        animes: [],
+        pagination: { currentPage, hasNext: false, hasPrev: currentPage > 1, totalPages: 1 },
+      };
+    }
+  }
+
   const [countRows, animeRows] = await Promise.all([
     prisma.$queryRaw`
       SELECT COUNT(*) AS total
@@ -457,6 +739,24 @@ export async function getPopularAnimePage(page = 1, pageSize = 15) {
   const currentPage = Math.max(Number(page) || 1, 1);
   const offset = (currentPage - 1) * pageSize;
 
+  if (!USE_DATABASE) {
+    try {
+      const result = await fetchOtakudesuEndpoint('/anime', { page: currentPage });
+      const allAnime = extractAnimeList(result);
+      const pagination = extractRemotePagination(result, currentPage, pageSize);
+      return {
+        animes: allAnime.slice(offset, offset + pageSize),
+        pagination,
+      };
+    } catch (error) {
+      console.error('Failed to fetch popular anime page from Otakudesu API:', error);
+      return {
+        animes: [],
+        pagination: makePagination(0, currentPage, pageSize),
+      };
+    }
+  }
+
   const [countRows, animeRows] = await Promise.all([
     prisma.$queryRaw`
       SELECT COUNT(*) AS total
@@ -479,6 +779,16 @@ export async function getPopularAnimePage(page = 1, pageSize = 15) {
 }
 
 export async function getGenresWithCounts() {
+  if (!USE_DATABASE) {
+    try {
+      const result = await fetchOtakudesuEndpoint('/genre');
+      return extractGenreList(result);
+    } catch (error) {
+      console.error('Failed to fetch genres from Otakudesu API:', error);
+      return [];
+    }
+  }
+
   const rows = await prisma.$queryRaw`
     SELECT
       g.id,
@@ -505,6 +815,29 @@ export async function getAnimeByGenreSlug(slug, page = 1, pageSize = 20) {
   const currentPage = Math.max(Number(page) || 1, 1);
   const offset = (currentPage - 1) * pageSize;
 
+  if (!USE_DATABASE) {
+    try {
+      const result = await fetchOtakudesuEndpoint(`/genre/${encodeURIComponent(slug)}`, {
+        page: currentPage,
+      });
+      return {
+        animes: extractAnimeList(result),
+        pagination: extractRemotePagination(result, currentPage, pageSize),
+      };
+    } catch (error) {
+      console.error('Failed to fetch anime by genre from Otakudesu API:', error);
+      return {
+        animes: [],
+        pagination: {
+          currentPage,
+          hasNext: false,
+          hasPrev: currentPage > 1,
+          totalPages: 1,
+        },
+      };
+    }
+  }
+
   const [countRows, animeRows] = await Promise.all([
     prisma.$queryRaw`
       SELECT COUNT(*) AS total
@@ -526,6 +859,34 @@ export async function getAnimeByGenreSlug(slug, page = 1, pageSize = 20) {
   ]);
 
   const totalItems = Number(countRows?.[0]?.total || 0);
+  if (!totalItems) {
+    try {
+      const result = await fetchOtakudesuEndpoint(`/genre/${encodeURIComponent(slug)}`, {
+        page: currentPage,
+      });
+      return {
+        animes: extractAnimeList(result),
+        pagination: {
+          currentPage,
+          hasNext: false,
+          hasPrev: currentPage > 1,
+          totalPages: 1,
+        },
+      };
+    } catch (error) {
+      console.error('Failed to fallback anime by genre from Otakudesu API:', error);
+      return {
+        animes: [],
+        pagination: {
+          currentPage,
+          hasNext: false,
+          hasPrev: currentPage > 1,
+          totalPages: 1,
+        },
+      };
+    }
+  }
+
   const pagination = makePagination(totalItems, currentPage, pageSize);
 
   return {
@@ -535,6 +896,19 @@ export async function getAnimeByGenreSlug(slug, page = 1, pageSize = 20) {
 }
 
 export async function searchAnimeByKeyword(keyword, limit = 24) {
+  if (!USE_DATABASE) {
+    const normalized = String(keyword || '').trim();
+    if (!normalized) return [];
+
+    try {
+      const result = await fetchOtakudesuEndpoint('/search', { q: normalized });
+      return extractAnimeList(result);
+    } catch (error) {
+      console.error('Failed to search anime from Otakudesu API:', error);
+      return [];
+    }
+  }
+
   const query = `%${String(keyword || '').trim()}%`;
   if (query === '%%') return [];
 
@@ -550,6 +924,16 @@ export async function searchAnimeByKeyword(keyword, limit = 24) {
 }
 
 export async function getAnimeDetailBySlug(slug) {
+  if (!USE_DATABASE) {
+    try {
+      const result = await fetchOtakudesuEndpoint(`/anime/${encodeURIComponent(slug)}`);
+      return normalizeRemoteDetailPayload(result);
+    } catch (error) {
+      console.error('Failed to fetch anime detail from Otakudesu API:', error);
+      return null;
+    }
+  }
+
   const rows = await prisma.$queryRaw`
     SELECT id, source_key, anime_id, batch_id, title, japanese_title, poster_url, anime_url, status, score, episodes, duration, aired, studios, producers, type, release_day, latest_release_date, last_release_date, season, synopsis, metadata, created_at, updated_at
     FROM animes
@@ -657,6 +1041,52 @@ export async function getAnimeDetailBySlug(slug) {
 }
 
 export async function getScheduleMap() {
+  if (!USE_DATABASE) {
+    try {
+      const result = await fetchOtakudesuEndpoint('/schedule');
+      const schedule = extractScheduleMap(result);
+
+      for (const [day, animes] of Object.entries(schedule)) {
+        schedule[day] = await Promise.all((animes || []).map(async (anime) => {
+          const hasPoster = Boolean(anime.poster && anime.poster !== NO_IMAGE_URL);
+          if (hasPoster || !anime.slug) {
+            return anime;
+          }
+
+          try {
+            const detail = await getAnimeDetailBySlug(String(anime.slug));
+            if (detail?.poster && detail.poster !== NO_IMAGE_URL) {
+              return {
+                ...anime,
+                poster: detail.poster,
+                image: detail.poster,
+                thumbnail: detail.poster,
+              };
+            }
+          } catch {
+            // Ignore detail enrichment failure and keep the original card
+          }
+
+          return anime;
+        }));
+      }
+
+      return schedule;
+    } catch (error) {
+      console.error('Failed to fetch schedule map from Otakudesu API:', error);
+      return {
+        minggu: [],
+        senin: [],
+        selasa: [],
+        rabu: [],
+        kamis: [],
+        "jum'at": [],
+        sabtu: [],
+        random: [],
+      };
+    }
+  }
+
   const rows = await prisma.$queryRaw`
     SELECT id, source_key, anime_id, batch_id, title, japanese_title, poster_url, anime_url, status, score, episodes, duration, aired, studios, producers, type, release_day, latest_release_date, last_release_date, season, synopsis, metadata, created_at, updated_at
     FROM animes

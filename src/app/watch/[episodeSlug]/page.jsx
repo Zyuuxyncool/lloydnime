@@ -7,6 +7,7 @@ import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { ChevronLeftIcon, ChevronRightIcon, PlayCircleIcon } from '@heroicons/react/24/solid';
 import ResponsiveBreadcrumb from '@/app/components/ResponsiveBreadcrumb';
+import { extractDetailPayload } from '@/app/libs/otakudesu-normalize';
 // Data episode sudah disediakan oleh server wrapper.
 
 const otakudesuFetch = (...args) => fetch(...args);
@@ -85,21 +86,27 @@ function WatchPageContent({ episodeSlug }) {
 
   const apiUrl = '';
 
+  const getCurrentOrigin = () => {
+    if (typeof window !== 'undefined' && window.location) {
+      return `${window.location.protocol}//${window.location.host}`;
+    }
+    return apiUrl || 'http://127.0.0.1:3000';
+  };
+
   const normalizeUrl = (rawUrl) => {
     if (!rawUrl || typeof rawUrl !== 'string') return null;
     if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) return rawUrl;
-
-    try {
-      const base = new URL(apiUrl);
-
-      if (rawUrl.startsWith('/')) {
-        return `${base.origin}${rawUrl}`;
-      }
-
-      return `${apiUrl}/${rawUrl}`;
-    } catch {
-      return rawUrl;
+    if (rawUrl.startsWith('//')) {
+      const origin = getCurrentOrigin();
+      return `${origin.split(':')[0]}:${rawUrl}`;
     }
+
+    const currentOrigin = getCurrentOrigin();
+    if (rawUrl.startsWith('/')) {
+      return `${currentOrigin}${rawUrl}`;
+    }
+
+    return `${currentOrigin}/${rawUrl.replace(/^\/+/, '')}`;
   };
 
   const withCacheBuster = (url, key) => {
@@ -207,12 +214,14 @@ function WatchPageContent({ episodeSlug }) {
         
         console.log("Episode Data:", episodeData);
 
-        // Sesuaikan dengan struktur response
-        let episodeContent = episodeData?.data || episodeData;
+        // Sesuaikan dengan struktur response dari proxy Otakudesu
+        const episodePayload = episodeData?.data || episodeData;
+        let episodeContent = episodePayload?.details || episodePayload?.detail || episodePayload?.episode || episodePayload || {};
 
         const isEmptyEpisodePayload =
           (!episodeContent?.title || episodeContent?.title === '') &&
           (!episodeContent?.defaultStreamingUrl || episodeContent?.defaultStreamingUrl === '') &&
+          (!episodeContent?.server?.qualityList || episodeContent.server.qualityList.length === 0) &&
           (!episodeContent?.server?.qualities || episodeContent.server.qualities.length === 0);
 
         if (isEmptyEpisodePayload) {
@@ -291,15 +300,17 @@ function WatchPageContent({ episodeSlug }) {
 
         // Handle nested qualities structure
         const qualityContainers = [];
-        if (episodeContent?.server?.qualities) qualityContainers.push(episodeContent.server);
-        if (episodeContent?.servers?.qualities) qualityContainers.push(episodeContent.servers);
+        if (episodeContent?.server) qualityContainers.push(episodeContent.server);
+        if (episodeContent?.servers) qualityContainers.push(episodeContent.servers);
 
         qualityContainers.forEach((container) => {
           const qualities = Array.isArray(container?.qualities)
             ? container.qualities
-            : Array.isArray(container?.qualities?.qualities)
-              ? container.qualities.qualities
-              : [];
+            : Array.isArray(container?.qualityList)
+              ? container.qualityList
+              : Array.isArray(container?.qualities?.qualities)
+                ? container.qualities.qualities
+                : [];
 
           qualities.forEach(extractFromQuality);
         });
@@ -329,7 +340,9 @@ function WatchPageContent({ episodeSlug }) {
         // Fallback: use defaultStreamingUrl as single server
         if (serversList.length === 0 && episodeContent.defaultStreamingUrl) {
           serversList = [{
-            title: 'Default Server',
+            title: 'Default Stream',
+            resolution: 'Auto',
+            quality: 'Auto',
             url: episodeContent.defaultStreamingUrl
           }];
         }
@@ -339,15 +352,11 @@ function WatchPageContent({ episodeSlug }) {
           url: normalizeUrl(server?.url || server?.href || server?.link) || (server?.serverId ? `${apiUrl}/otakudesu/server/${server.serverId}` : null),
         }));
         
-        // Filter out "default-stream" and servers without proper quality
+        // Keep valid server entries; preserve the default stream fallback when it is the only available option
         serversList = serversList.filter((server) => {
           const title = String(server?.title || '').toLowerCase();
-          
-          // Exclude default-stream button and default servers
+
           if (title.includes('default-stream')) return false;
-          if (title === 'default server') return false;
-          
-          // Keep servers with valid URL or serverId
           return Boolean(server?.url || server?.serverId);
         });
         
@@ -409,10 +418,10 @@ function WatchPageContent({ episodeSlug }) {
           );
 
           if (rawEndpoint) {
-            const isServerApiEndpoint = rawEndpoint.includes('/server/');
+            const isServerApiEndpoint = isApiServerEndpoint(rawEndpoint);
             if (isServerApiEndpoint) {
               try {
-                const endpointUrl = new URL(rawEndpoint);
+                const endpointUrl = new URL(rawEndpoint, getCurrentOrigin());
                 const qualityText = String(best.server?.resolution || best.server?.quality || '').trim();
                 if (qualityText) endpointUrl.searchParams.set('quality', qualityText);
                 if (episodeSlug) endpointUrl.searchParams.set('episode', episodeSlug);
@@ -420,12 +429,7 @@ function WatchPageContent({ episodeSlug }) {
                 const resolvedResponse = await otakudesuFetch(endpointUrl.toString(), { cache: 'no-store' });
                 if (resolvedResponse.ok) {
                   const resolvedData = await parseJsonResponse(resolvedResponse, 'initial server resolve');
-                  const streamUrl =
-                    resolvedData?.data?.url ||
-                    resolvedData?.url ||
-                    resolvedData?.streamUrl ||
-                    resolvedData?.link ||
-                    null;
+                  const streamUrl = extractResolvedStreamUrl(resolvedData);
 
                   if (streamUrl) {
                     chosenUrl = normalizeUrl(streamUrl);
@@ -445,7 +449,7 @@ function WatchPageContent({ episodeSlug }) {
         // Fallback terakhir jika resolve server terbaik gagal
         if (!chosenUrl) {
           const fallbackUrl = normalizeUrl(episodeContent.defaultStreamingUrl || serversList?.[0]?.url);
-          if (fallbackUrl && !fallbackUrl.includes('/server/')) {
+          if (fallbackUrl) {
             chosenUrl = fallbackUrl;
             chosenIdentifier = fallbackUrl;
           }
@@ -499,10 +503,9 @@ function WatchPageContent({ episodeSlug }) {
         console.log("episodeSlug:", episodeSlug);
         
         // Fallback: extract anime slug dari episodeSlug (misal: "hmode-episode-1" -> "hmode")
-        let animeSlugToFetch = currentAnimeSlug;
+        let animeSlugToFetch = currentAnimeSlug || episodeContent?.animeId || episodeContent?.details?.animeId || episodeContent?.detail?.animeId;
         if (!animeSlugToFetch && episodeSlug) {
-          // Extract base slug dari episode slug (before "-episode-")
-          const match = episodeSlug.match(/^(.+?)-episode-\d+$/);
+          const match = episodeSlug.match(/^(.*?)(?:-episode-\d+)(?:-sub-indo)?$/i);
           if (match) {
             animeSlugToFetch = match[1];
             console.log("Anime slug extracted from episodeSlug:", animeSlugToFetch);
@@ -532,6 +535,13 @@ function WatchPageContent({ episodeSlug }) {
               
               if (episodes.length > 0) {
                 setEpisodeList(episodes);
+                if (!animeInfo?.slug && (animeDetail?.title || episodeContent?.title)) {
+                  setAnimeInfo({
+                    slug: animeSlugToFetch,
+                    title: animeDetail?.title || animeDetail?.name || episodeContent?.title || episodeTitle || '',
+                    image: animeDetail?.poster || animeDetail?.image || ''
+                  });
+                }
                 console.log("✅ Episode list updated with", episodes.length, "episodes");
               } else {
                 console.warn("⚠️ Episodes array is empty. Response keys:", Object.keys(animeDetail));
@@ -669,14 +679,32 @@ function WatchPageContent({ episodeSlug }) {
   };
 
   const isApiServerEndpoint = (endpoint) => {
-    if (!endpoint || !apiUrl) return false;
+    if (!endpoint) return false;
     try {
-      const apiBase = new URL(apiUrl);
-      const target = new URL(endpoint);
-      return target.origin === apiBase.origin && target.pathname.includes('/server/');
+      const target = new URL(endpoint, getCurrentOrigin());
+      return target.pathname.includes('/server/');
     } catch {
-      return false;
+      return String(endpoint).includes('/server/');
     }
+  };
+
+  const extractResolvedStreamUrl = (data) => {
+    const candidates = [
+      data?.data?.url,
+      data?.data?.streamUrl,
+      data?.data?.link,
+      data?.data?.details?.url,
+      data?.data?.details?.streamUrl,
+      data?.data?.details?.link,
+      data?.url,
+      data?.streamUrl,
+      data?.link,
+      data?.details?.url,
+      data?.details?.streamUrl,
+      data?.details?.link,
+    ];
+
+    return candidates.find((value) => typeof value === 'string' && value.trim()) || null;
   };
 
   const getServerMeta = (server, fallbackIndex = 0) => {
@@ -708,7 +736,7 @@ function WatchPageContent({ episodeSlug }) {
   const buildServerApiUrl = (endpoint, meta) => {
     if (!endpoint) return endpoint;
     try {
-      const url = new URL(endpoint);
+      const url = new URL(endpoint, getCurrentOrigin());
       
       // Pass quality information in multiple ways for compatibility
       if (meta?.resolution) {
@@ -749,7 +777,7 @@ function WatchPageContent({ episodeSlug }) {
       }
       const data = await parseJsonResponse(res, 'server API');
       const resolved = data?.data?.resolved ?? data?.resolved;
-      const streamUrl = extractStreamUrl(data);
+      const streamUrl = extractResolvedStreamUrl(data);
 
       if (resolved === false || !streamUrl) {
         return { ok: false, data, activeId };
@@ -1081,7 +1109,8 @@ function WatchPageContent({ episodeSlug }) {
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
                   {episodeList.map((ep, index) => {
                     const epId = ep.watchSlug || ep.episodeId || ep.slug || ep.id;
-                    const epNum = ep.eps || (index + 1);
+                    const parsedEpNum = Number(String(ep.eps || '').match(/(\d+)/)?.[1]);
+                    const epNum = Number.isFinite(parsedEpNum) && parsedEpNum > 0 ? parsedEpNum : (index + 1);
                     const isCurrentEpisode = epId === episodeSlug;
                     
                     return (

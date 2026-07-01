@@ -9,20 +9,20 @@ import { getAnimeByGenreSlug, getGenresWithCounts } from '@/app/libs/anime-db';
 
 async function getAnimeByGenre(slug, page = 1) {
   try {
-    const animes = await getAnimeByGenreSlug(slug, page, 20);
+    const result = await getAnimeByGenreSlug(slug, page, 20);
 
     return {
-      animes: animes,
+      animes: result?.animes || [],
       pagination: {
-        hasNext: false,
-        hasPrev: page > 1,
-        currentPage: page,
-        totalPages: 1
+        hasNext: Boolean(result?.pagination?.hasNext),
+        hasPrev: Boolean(result?.pagination?.hasPrev || page > 1),
+        currentPage: result?.pagination?.currentPage || page,
+        totalPages: result?.pagination?.totalPages || 1
       }
     };
   } catch (error) {
     console.error("Error fetching anime by genre from database:", error);
-    return { animes: [], pagination: { hasNext: false, hasPrev: false } };
+    return { animes: [], pagination: { hasNext: false, hasPrev: false, currentPage: page, totalPages: 1 } };
   }
 }
 
@@ -114,6 +114,7 @@ export default async function GenrePage({ params: paramsPromise, searchParams: s
             <PaginationControls
               currentPage={currentPage}
               hasNextPage={hasNextPage}
+              hasPrevPage={result.pagination?.hasPrev || currentPage > 1}
               totalPages={totalPages}
             />
           </>
