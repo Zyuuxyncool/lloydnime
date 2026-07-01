@@ -1,5 +1,5 @@
 // API Proxy untuk Otakudesu - Forward requests ke external API
-const EXTERNAL_API_URL = 'https://api-otakudesu-zeta.vercel.app';
+const EXTERNAL_API_URL = (process.env.OTAKUDESU_API_URL || 'http://152.42.181.126/otakudesu').replace(/\/+$/, '');
 
 export async function GET(request, { params }) {
   try {
