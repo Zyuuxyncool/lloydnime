@@ -1146,7 +1146,6 @@ function WatchPageContent({ episodeSlug }) {
         <div className="bg-neutral-900 p-4 rounded-lg mb-8">
           <h1 className="text-2xl md:text-3xl font-bold mb-2 truncate">{episodeTitle || 'Memuat judul...'}</h1>
           <div className="flex justify-between items-center">
-            <span className="text-sm text-pink-400">Animasu API</span>
             <div className="flex space-x-2">
               
               {/* --- PERBAIKAN LINK: Hapus searchParams.toString() --- */}
