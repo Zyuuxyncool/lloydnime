@@ -1,4 +1,3 @@
-
 import React from 'react'
 import SearchInput from './SearchInput'
 import Link from 'next/link'
@@ -30,13 +29,25 @@ const HeroSection = () => {
             The Fragrant Flower Blooms... Kaiji No. 8 Season 2,
             Demon Slayer: Kimetsu no Y... Demon Slayer: The Hashira... To Be Hero X
           </div>
-          <div className="flex flex-col lg:flex-row space-y-3 lg:space-y-0 lg:space-x-4 relative z-20">
+
+          {/* Wrapper Tombol Aksi */}
+          <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4 relative z-20 w-full">
             <Link
               href="/animelist"
-              className="bg-pink-500 text-white px-6 py-2 lg:py-3 rounded-full flex items-center justify-center"
+              className="bg-pink-500 hover:bg-pink-600 transition-colors duration-200 text-white px-6 py-2 lg:py-3 rounded-full flex items-center justify-center text-sm lg:text-base font-medium flex-1 sm:flex-none"
             >
               Database Anime A - Z
             </Link>
+
+            <a
+              href="https://saweria.co/lloyd1112"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-amber-500 hover:bg-amber-600 transition-colors duration-200 text-neutral-950 px-6 py-2 lg:py-3 rounded-full flex items-center justify-center text-sm lg:text-base font-bold flex-1 sm:flex-none space-x-2"
+            >
+              <span>😸</span>
+              <span>Donate Admin</span>
+            </a>
           </div>
         </div>
 
