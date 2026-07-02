@@ -4,7 +4,7 @@ import { extractAnimeList, extractHomeSections, extractScheduleMap, extractGenre
 const NO_IMAGE_URL = 'https://placehold.co/400x600/171717/ef4444?text=No+Image';
 const DEFAULT_PAGE_SIZE = 20;
 const USE_DATABASE = process.env.USE_OTAKUDESU_DB === 'true';
-const DEFAULT_OTAKUDESU_API_URL = (process.env.OTAKUDESU_API_URL || 'http://152.42.181.126/otakudesu').replace(/\/+$/, '');
+const DEFAULT_OTAKUDESU_API_URL = (process.env.OTAKUDESU_API_URL || 'http://165.22.52.169:3001/otakudesu/').replace(/\/+$/, '');
 
 function buildOtakudesuUrl(endpoint, query = {}) {
   const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;

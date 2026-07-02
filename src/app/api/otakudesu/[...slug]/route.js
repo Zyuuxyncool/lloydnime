@@ -1,5 +1,5 @@
 // API Proxy untuk Otakudesu - Forward requests ke external API
-const EXTERNAL_API_URL = (process.env.OTAKUDESU_API_URL || 'http://152.42.181.126/otakudesu').replace(/\/+$/, '');
+const EXTERNAL_API_URL = (process.env.OTAKUDESU_API_URL || 'http://165.22.52.169:3001/otakudesu/').replace(/\/+$/, '');
 
 export async function GET(request, { params }) {
   try {

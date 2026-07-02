@@ -4,7 +4,7 @@
  */
 
 const GITHUB_RAW_URL = 'https://raw.githubusercontent.com/Zyuuxyncool/lloydnime/main/public/api-snapshots';
-const LIVE_API_URL = (process.env.OTAKUDESU_API_URL || 'http://152.42.181.126/otakudesu').replace(/\/+$/, '');
+const LIVE_API_URL = (process.env.OTAKUDESU_API_URL || 'http://165.22.52.169:3001/otakudesu/').replace(/\/+$/, '');
 const LOCAL_API_URL = '/otakudesu'; // Use local proxy
 
 /**

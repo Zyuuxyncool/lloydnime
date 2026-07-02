@@ -8,7 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const API_URL = (process.env.API_URL || process.env.OTAKUDESU_API_URL || 'http://152.42.181.126/otakudesu').replace(/\/+$/, '');
+const API_URL = (process.env.API_URL || process.env.OTAKUDESU_API_URL || 'http://165.22.52.169:3001/otakudesu/').replace(/\/+$/, '');
 const SNAPSHOTS_DIR = path.join(__dirname, '..', 'public', 'api-snapshots');
 
 // Ensure directory exists
