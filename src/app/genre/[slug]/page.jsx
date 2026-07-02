@@ -11,13 +11,21 @@ async function getAnimeByGenre(slug, page = 1) {
   try {
     const result = await getAnimeByGenreSlug(slug, page, 20);
 
+    const pagination = result?.pagination || {};
+    const hasNextPage = pagination?.hasNextPage !== undefined && pagination?.hasNextPage !== null
+      ? Boolean(pagination.hasNextPage)
+      : Boolean(pagination?.hasNext);
+    const hasPrevPage = pagination?.hasPrevPage !== undefined && pagination?.hasPrevPage !== null
+      ? Boolean(pagination.hasPrevPage)
+      : Boolean(pagination?.hasPrev || page > 1);
+
     return {
       animes: result?.animes || [],
       pagination: {
-        hasNext: Boolean(result?.pagination?.hasNext),
-        hasPrev: Boolean(result?.pagination?.hasPrev || page > 1),
-        currentPage: result?.pagination?.currentPage || page,
-        totalPages: result?.pagination?.totalPages || 1
+        hasNext: hasNextPage,
+        hasPrev: hasPrevPage,
+        currentPage: pagination?.currentPage || page,
+        totalPages: pagination?.totalPages || 1
       }
     };
   } catch (error) {
@@ -47,8 +55,10 @@ export default async function GenrePage({ params: paramsPromise, searchParams: s
   ]);
 
   const animes = result.animes || [];
-  const hasNextPage = result.pagination?.hasNext || false;
-  const totalPages = result.pagination?.totalPages || 1;
+  const pagination = result.pagination || {};
+  const hasNextPage = pagination.hasNextPage != null ? Boolean(pagination.hasNextPage) : Boolean(pagination.hasNext);
+  const hasPrevPage = pagination.hasPrevPage != null ? Boolean(pagination.hasPrevPage) : Boolean(pagination.hasPrev || currentPage > 1);
+  const totalPages = pagination?.totalPages || 1;
 
   // Find genre name from slug
   const currentGenre = allGenres.find(g => g.slug === slug);
@@ -114,7 +124,7 @@ export default async function GenrePage({ params: paramsPromise, searchParams: s
             <PaginationControls
               currentPage={currentPage}
               hasNextPage={hasNextPage}
-              hasPrevPage={result.pagination?.hasPrev || currentPage > 1}
+              hasPrevPage={hasPrevPage}
               totalPages={totalPages}
             />
           </>

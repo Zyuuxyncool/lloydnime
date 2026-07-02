@@ -184,11 +184,20 @@ export default async function DetailAnimePage({ params: paramsPromise }) {
   const source = toDisplayText(pickFirst(anime.source, anime.sourceType));
 
   const rawGenres = pickFirst(anime.genreList, anime.genres, anime.genre, []);
-  const genres = (Array.isArray(rawGenres) ? rawGenres : []).map((genre) => ({
-    genreId: genre?.genreId || genre?.slug || genre?.id,
-    title: genre?.title || genre?.name || genre?.genre || genre,
-    name: genre?.name || genre?.title || genre?.genre || genre,
-  }));
+  const genres = (Array.isArray(rawGenres) ? rawGenres : []).map((genre) => {
+    const genreLabel = typeof genre === 'string'
+      ? genre
+      : pickFirst(genre?.title, genre?.name, genre?.genre, genre?.slug, genre?.label);
+    const normalizedLabel = typeof genreLabel === 'string'
+      ? genreLabel.trim()
+      : (typeof genreLabel === 'number' ? String(genreLabel) : '');
+
+    return {
+      genreId: genre?.genreId || genre?.slug || genre?.id,
+      title: normalizedLabel || 'Genre',
+      name: normalizedLabel || 'Genre',
+    };
+  });
 
   const rawEpisodesSource = pickFirst(
     anime.episodeList,

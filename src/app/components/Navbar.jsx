@@ -20,8 +20,8 @@ const Navbar = ({ user }) => {
   }, []);
 
   const navLinks = [
-    { href: "/populer", name: "Populer" },
-    { href: "/movie", name: "Movie" },
+    // { href: "/populer", name: "Populer" },
+    // { href: "/movie", name: "Movie" },
     { href: "/genres", name: "Genre" },
     { href: "/schedule", name: "Schedule" },
   ];

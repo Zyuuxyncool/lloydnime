@@ -92,9 +92,30 @@ function normalizeMaybeEmpty(value) {
   return text;
 }
 
-function extractRemotePagination(result, currentPage = 1, pageSize = DEFAULT_PAGE_SIZE) {
+async function hasRemoteNextPage(endpoint, currentPage = 1) {
+  try {
+    const nextResult = await fetchOtakudesuEndpoint(endpoint, { page: currentPage + 1 });
+    const nextItems = extractAnimeList(nextResult);
+    return Array.isArray(nextItems) && nextItems.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function extractRemotePagination(result, currentPage = 1, pageSize = DEFAULT_PAGE_SIZE, items = []) {
   if (!result || typeof result !== 'object') {
-    return makePagination(0, currentPage, pageSize);
+    const fallbackItems = Array.isArray(items) ? items : [];
+    const hasNext = fallbackItems.length >= pageSize;
+    return {
+      currentPage,
+      totalPages: hasNext ? currentPage + 1 : Math.max(1, currentPage),
+      hasPrev: currentPage > 1,
+      hasNext,
+      hasPrevPage: currentPage > 1,
+      hasNextPage: hasNext,
+      totalItems: fallbackItems.length,
+      pageSize,
+    };
   }
 
   const paginationSource = result?.pagination || result?.paging || result?.meta || result || {};
@@ -143,17 +164,21 @@ function extractRemotePagination(result, currentPage = 1, pageSize = DEFAULT_PAG
   ) || pageSize;
 
   const finalTotalPages = totalPages > 0 ? totalPages : (totalItems > 0 ? Math.max(1, Math.ceil(totalItems / normalizedPageSize)) : 1);
+  const inferredItems = Array.isArray(items) ? items : [];
+  const inferredHasNext = inferredItems.length >= normalizedPageSize;
   const hasPrev = page > 1 || Boolean(paginationSource?.hasPrev || paginationSource?.has_prev || paginationSource?.prev_page);
   const hasNext = Boolean(
     paginationSource?.hasNext ||
     paginationSource?.has_next ||
     paginationSource?.next_page ||
-    page < finalTotalPages
+    page < finalTotalPages ||
+    inferredHasNext
   );
+  const resolvedTotalPages = inferredHasNext ? Math.max(finalTotalPages, page + 1) : finalTotalPages;
 
   return {
     currentPage: page,
-    totalPages: finalTotalPages,
+    totalPages: resolvedTotalPages,
     hasPrev,
     hasNext,
     hasPrevPage: hasPrev,
@@ -207,6 +232,19 @@ function normalizeRemoteDetailPayload(result) {
   );
   const rawGenres = pickFirst(detail?.genreList, detail?.genres, payload?.genreList, payload?.genres, []);
   const rawEpisodes = pickFirst(detail?.episodeList, detail?.episodes, payload?.episodeList, payload?.episodes, []);
+  const rawRecommended = pickFirst(
+    detail?.recommendedAnimeList,
+    detail?.recommendAnimeList,
+    detail?.recommendations,
+    detail?.relatedAnimeList,
+    detail?.relatedAnime,
+    payload?.recommendedAnimeList,
+    payload?.recommendAnimeList,
+    payload?.recommendations,
+    payload?.relatedAnimeList,
+    payload?.relatedAnime,
+    []
+  );
 
   const genres = (Array.isArray(rawGenres) ? rawGenres : []).map((genre) => ({
     genreId: genre?.genreId || genre?.slug || genre?.id,
@@ -217,6 +255,7 @@ function normalizeRemoteDetailPayload(result) {
   const synopsis = pickFirst(
     detail?.synopsis?.text,
     detail?.synopsis?.paragraphs && Array.isArray(detail?.synopsis?.paragraphs) ? detail.synopsis.paragraphs.join('\n') : null,
+    detail?.synopsis?.paragraphList && Array.isArray(detail?.synopsis?.paragraphList) ? detail.synopsis.paragraphList.join('\n') : null,
     detail?.description,
     detail?.desc,
     detail?.synopsis,
@@ -241,6 +280,18 @@ function normalizeRemoteDetailPayload(result) {
     null
   );
 
+  const recommendedAnimeList = (Array.isArray(rawRecommended) ? rawRecommended : [])
+    .map((item) => ({
+      slug: pickFirst(item?.slug, item?.animeId, item?.anime_id, item?.id, null),
+      animeId: pickFirst(item?.animeId, item?.anime_id, item?.id, null),
+      title: pickFirst(item?.title, item?.name, item?.judul, 'Anime'),
+      poster: pickFirst(item?.poster, item?.image, item?.thumbnail, NO_IMAGE_URL),
+      image: pickFirst(item?.poster, item?.image, item?.thumbnail, NO_IMAGE_URL),
+      thumbnail: pickFirst(item?.poster, item?.image, item?.thumbnail, NO_IMAGE_URL),
+      otakudesuUrl: pickFirst(item?.otakudesuUrl, item?.url, item?.link, null),
+    }))
+    .filter((item) => Boolean(item.slug || item.animeId));
+
   return {
     id: pickFirst(detail?.animeId, payload?.animeId, payload?.slug, payload?.id, null),
     animeId: pickFirst(detail?.animeId, payload?.animeId, payload?.slug, payload?.id, null),
@@ -264,6 +315,8 @@ function normalizeRemoteDetailPayload(result) {
     genres,
     genreList: genres,
     episodeList: Array.isArray(rawEpisodes) ? rawEpisodes : [],
+    recommendedAnimeList,
+    recommendations: recommendedAnimeList,
     batch: pickFirst(payload?.batch, detail?.batch, null),
     info: detail && typeof detail === 'object' ? detail : payload,
     rawInfoPayload: detail && typeof detail === 'object' ? detail : payload,
@@ -699,9 +752,15 @@ export async function getAnimeByStatus(status, page = 1, pageSize = 20) {
     try {
       const endpoint = safeStatus.toLowerCase() === 'ongoing' ? '/ongoing' : '/completed';
       const result = await fetchOtakudesuEndpoint(endpoint, { page: currentPage });
+      const animes = extractAnimeList(result);
+      const hasNext = await hasRemoteNextPage(endpoint, currentPage);
       return {
-        animes: extractAnimeList(result),
-        pagination: extractRemotePagination(result, currentPage, pageSize),
+        animes,
+        pagination: {
+          ...extractRemotePagination(result, currentPage, pageSize, animes),
+          hasNext,
+          hasNextPage: hasNext,
+        },
       };
     } catch (error) {
       console.error('Failed to fetch anime by status from Otakudesu API:', error);
@@ -743,9 +802,14 @@ export async function getPopularAnimePage(page = 1, pageSize = 15) {
     try {
       const result = await fetchOtakudesuEndpoint('/anime', { page: currentPage });
       const allAnime = extractAnimeList(result);
-      const pagination = extractRemotePagination(result, currentPage, pageSize);
+      const hasNext = await hasRemoteNextPage('/anime', currentPage);
+      const pagination = {
+        ...extractRemotePagination(result, currentPage, pageSize, allAnime),
+        hasNext,
+        hasNextPage: hasNext,
+      };
       return {
-        animes: allAnime.slice(offset, offset + pageSize),
+        animes: allAnime,
         pagination,
       };
     } catch (error) {
@@ -820,9 +884,16 @@ export async function getAnimeByGenreSlug(slug, page = 1, pageSize = 20) {
       const result = await fetchOtakudesuEndpoint(`/genre/${encodeURIComponent(slug)}`, {
         page: currentPage,
       });
+      const animes = extractAnimeList(result);
+      const endpoint = `/genre/${encodeURIComponent(slug)}`;
+      const hasNext = await hasRemoteNextPage(endpoint, currentPage);
       return {
-        animes: extractAnimeList(result),
-        pagination: extractRemotePagination(result, currentPage, pageSize),
+        animes,
+        pagination: {
+          ...extractRemotePagination(result, currentPage, pageSize, animes),
+          hasNext,
+          hasNextPage: hasNext,
+        },
       };
     } catch (error) {
       console.error('Failed to fetch anime by genre from Otakudesu API:', error);
@@ -864,13 +935,15 @@ export async function getAnimeByGenreSlug(slug, page = 1, pageSize = 20) {
       const result = await fetchOtakudesuEndpoint(`/genre/${encodeURIComponent(slug)}`, {
         page: currentPage,
       });
+      const animes = extractAnimeList(result);
+      const endpoint = `/genre/${encodeURIComponent(slug)}`;
+      const hasNext = await hasRemoteNextPage(endpoint, currentPage);
       return {
-        animes: extractAnimeList(result),
+        animes,
         pagination: {
-          currentPage,
-          hasNext: false,
-          hasPrev: currentPage > 1,
-          totalPages: 1,
+          ...extractRemotePagination(result, currentPage, pageSize, animes),
+          hasNext,
+          hasNextPage: hasNext,
         },
       };
     } catch (error) {
